@@ -1,7 +1,7 @@
 meta {
-  name: Status → accepted (staff)
+  name: Status to preparing (staff)
   type: http
-  seq: 1
+  seq: 8
 }
 
 patch {
@@ -13,11 +13,11 @@ patch {
 headers {
   Cookie: access_token={{staffToken}}
   X-Region: {{region}}
-  Idempotency-Key: brave-status-1
+  Idempotency-Key: brave-status-2
 }
 
 body:json {
   {
-    "status": "accepted"
+    "status": "preparing"
   }
 }

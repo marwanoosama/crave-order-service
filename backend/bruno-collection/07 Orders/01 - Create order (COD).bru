@@ -20,7 +20,7 @@ body:json {
   {
     "branchId": 1,
     "customerAddressId": 1,
-    "paymentMethod": "cod",
+    "paymentMethod": "online",
     "items": [
       {
         "productId": 2,
@@ -28,6 +28,11 @@ body:json {
       }
     ]
   }
+}
+
+vars:pre-request {
+  orderBase: http://localhost:4000/api
+  region: eg
 }
 
 script:post-response {
