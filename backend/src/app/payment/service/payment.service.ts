@@ -6,55 +6,20 @@ import {fromMinor} from "../../../pkg/utils/money";
 import {toMs} from "../../../pkg/utils/time";
 import {env} from "../../../lib/config/env";
 import {IPaymentProvider} from "../../../pkg/payments/payment.interface";
-import {findOrderById, findOrderByPublicId} from "../../order/repository/order.repo";
 import {OrderEntity} from "../../order/entity/order.entity";
-import {OrderStatus} from "../../order/enums";
 import {UnAuthorisedError} from "../../../lib/auth/errors";
 import {
     createSession,
     findActiveSessionByOrderId,
 } from "../repository/payment-session.repo";
-import {
-    createTransaction,
-    findTransactionById,
-    findTransactionByIdempotencyKey,
-    findTransactionWithRestaurant,
-    updateTransaction,
-} from "../repository/transaction.repo";
+import {findTransactionWithRestaurant} from "../repository/transaction.repo";
 import {PaymentSessionEntity} from "../entity/payment-session.entity";
-import {
-    PaymentSessionStatus,
-    PaymentProviderName,
-    PAYMENT_PROVIDER_IDS,
-    TransactionType,
-    TransactionStatus,
-} from "../enums";
+import {PaymentSessionStatus, PaymentProviderName, PAYMENT_PROVIDER_IDS} from "../enums";
 import {PaymentInitResponseDTO, PaymentResponseDTO} from "../dto/payment.response.dto";
-import {RefundRequestDTO} from "../dto/payment.request.dto";
-import {OrderNotFoundError} from "../../order/errors";
 import {
-    InvalidRefundAmountError,
-    OrderNotPendingPaymentError,
-    PaymentAlreadyRefundedError,
-    PaymentCannotBeRefundedError,
     PaymentNotFoundError,
     PaymentProviderUnavailableError,
 } from "../errors";
-
-/**
- * The per-session `serverWebhook` destination Kashier calls back for this
- * order. The region query param is the only sharding hint Kashier can carry
- * (it cannot set custom headers on the callback). Returns undefined when no
- * public webhook URL is configured (e.g. local dev) — Kashier then skips the
- * callback and confirmation falls back to manual/provider verification.
- */
-export function buildSessionWebhookUrl(region: string): string | undefined {
-    const base = env.kashier.webhookUrl.trim();
-    if (!base) return undefined;
-    return base.includes("?")
-        ? `${base}&region=${encodeURIComponent(region)}`
-        : `${base}?region=${encodeURIComponent(region)}`;
-}
 
 interface InitOnlinePaymentResult {
     session: PaymentSessionEntity;
@@ -65,25 +30,6 @@ interface InitOnlinePaymentResult {
 @injectable()
 export class PaymentService {
     constructor(@inject(TOKENS.KashierProvider) private readonly kashier: IPaymentProvider) {}
-
-    /**
-     * POST /payments/init.
-     *
-     * Customer-indexable entry point: the client (re)requests the checkout
-     * session for an order that is still awaiting payment. Idempotent at the
-     * domain level — an existing active session is returned as-is.
-     */
-    async init(actor: {userId: number; role: string}, region: string, orderId: string): Promise<PaymentInitResponseDTO> {
-        if (actor.role !== "customer") throw UnAuthorisedError;
-
-        const order = await findOrderByPublicId(orderId, db(region));
-        if (!order) throw OrderNotFoundError;
-        if (Number(order.customerId) !== Number(actor.userId)) throw UnAuthorisedError;
-        if (order.status !== OrderStatus.PENDING_PAYMENT) throw OrderNotPendingPaymentError;
-
-        const {dto} = await this.initOnlinePayment(order);
-        return dto;
-    }
 
     /**
      * Called from OrderService.placeOrder for online orders, AFTER the order
@@ -114,9 +60,8 @@ export class PaymentService {
                 merchantOrderId: order.publicId,
                 amount: fromMinor(order.total).toFixed(2),
                 currency: order.currency,
-                description: `Crave order ${order.publicId}`,
+                description: `QuickBite order ${order.publicId}`,
                 allowedMethods: "card,wallet",
-                serverWebhookUrl: buildSessionWebhookUrl(order.region),
                 customerReference: String(order.customerId),
             });
         } catch (err) {
@@ -150,136 +95,28 @@ export class PaymentService {
     }
 
     /**
-     * GET /payments/:paymentId or /restaurants/:restaurantId/payments/:paymentId.
+     * GET /restaurants/:restaurantId/payments/:paymentId.
      *
-     * - system_admin: can read any payment in the region.
-     * - restaurant_user: must belong to the restaurant owning the transaction.
-     * - customer: must be the paying customer (srcAccId).
+     * Auth split between layers:
+     *   - middleware (`requireRestaurantMember` + `rbac`) gates the request to
+     *     members of the restaurant in the URL with `payments:read`;
+     *     `system_admin` bypasses both.
+     *   - this method just enforces "the payment actually belongs to that
+     *     restaurant" so a member can't peek into a sibling restaurant by id.
+     *
+     * Single SQL via JOIN — no N+1.
      */
-    async getById(
-        actor: {userId: number; role: string; restaurantId?: number},
-        paymentId: number,
-        region: string,
-        restaurantIdParam?: number,
-    ): Promise<PaymentResponseDTO> {
+    async getById(paymentId: number, restaurantId: number, region: string): Promise<PaymentResponseDTO> {
         const conn = db(region);
         const found = await findTransactionWithRestaurant(paymentId, conn);
         if (!found) throw PaymentNotFoundError;
 
-        if (actor.role === "system_admin") {
-            return PaymentResponseDTO.from(found.transaction);
+        if (found.restaurantId !== null && found.restaurantId !== restaurantId) {
+            // The middleware verified the caller's right to see "restaurantId",
+            // but the transaction belongs to a different restaurant.
+            throw UnAuthorisedError;
         }
 
-        if (actor.role === "restaurant_user") {
-            const expectedRestId = restaurantIdParam ?? actor.restaurantId;
-            if (found.restaurantId !== null && Number(found.restaurantId) !== Number(expectedRestId)) {
-                throw UnAuthorisedError;
-            }
-            return PaymentResponseDTO.from(found.transaction);
-        }
-
-        if (actor.role === "customer") {
-            if (
-                Number(found.transaction.srcAccId) !== Number(actor.userId) &&
-                Number(found.transaction.dstAccId) !== Number(actor.userId)
-            ) {
-                throw UnAuthorisedError;
-            }
-            return PaymentResponseDTO.from(found.transaction);
-        }
-
-        throw UnAuthorisedError;
-    }
-
-    /**
-     * POST /payments/:paymentId/refund.
-     *
-     * Admin-only refund entry point.
-     * Idempotent: replaying with the same Idempotency-Key returns the existing
-     * pending/succeeded refund transaction.
-     */
-    async refund(
-        actor: {userId: number; role: string},
-        region: string,
-        paymentId: number,
-        body: RefundRequestDTO,
-        idempotencyKey?: string,
-    ): Promise<{refundId: number; status: string; amount: number; currency: string}> {
-        if (actor.role !== "system_admin") throw UnAuthorisedError;
-
-        const conn = db(region);
-        const chargeTx = await findTransactionById(paymentId, conn);
-        if (!chargeTx) throw PaymentNotFoundError;
-
-        if (chargeTx.transactionType !== TransactionType.CHARGE || chargeTx.status !== TransactionStatus.SUCCEEDED) {
-            throw PaymentCannotBeRefundedError;
-        }
-
-        if (chargeTx.isRefunded) {
-            throw PaymentAlreadyRefundedError;
-        }
-
-        const refundAmount = body.amount !== undefined ? body.amount : chargeTx.amount;
-        if (refundAmount <= 0 || refundAmount > chargeTx.amount) {
-            throw InvalidRefundAmountError;
-        }
-
-        const effectiveKey = idempotencyKey ?? `refund:${paymentId}:${chargeTx.providerReferenceId ?? "default"}`;
-        const existing = await findTransactionByIdempotencyKey(effectiveKey, conn);
-        if (existing) {
-            return {
-                refundId: existing.id,
-                status: existing.status,
-                amount: existing.amount,
-                currency: existing.currency,
-            };
-        }
-
-        const order = chargeTx.orderId ? await findOrderById(chargeTx.orderId, conn) : undefined;
-
-        const refundTx = await createTransaction({
-            region,
-            orderId: chargeTx.orderId,
-            transactionType: TransactionType.REFUND,
-            method: chargeTx.method,
-            providerId: chargeTx.providerId,
-            providerReferenceId: null,
-            status: TransactionStatus.PENDING,
-            amount: refundAmount,
-            currency: chargeTx.currency,
-            srcAccId: chargeTx.dstAccId,
-            dstAccId: chargeTx.srcAccId,
-            idempotencyKey: effectiveKey,
-        }, conn);
-
-        if (chargeTx.providerId === PAYMENT_PROVIDER_IDS[PaymentProviderName.KASHIER]) {
-            try {
-                const kashierRes = await this.kashier.refund({
-                    kashierOrderId: order ? order.publicId : (chargeTx.providerReferenceId ?? String(chargeTx.id)),
-                    targetTransactionId: chargeTx.providerReferenceId ?? undefined,
-                    amount: fromMinor(refundAmount).toFixed(2),
-                    currency: chargeTx.currency,
-                    reason: body.reason,
-                });
-                if (kashierRes.providerRefundId) {
-                    await updateTransaction(refundTx.id, {providerReferenceId: kashierRes.providerRefundId}, conn);
-                }
-            } catch (err) {
-                logger.error("kashier refund call failed", {
-                    paymentId,
-                    refundTxId: refundTx.id,
-                    error: (err as Error).message,
-                });
-                await updateTransaction(refundTx.id, {status: TransactionStatus.FAILED}, conn);
-                throw PaymentProviderUnavailableError;
-            }
-        }
-
-        return {
-            refundId: refundTx.id,
-            status: refundTx.status,
-            amount: refundTx.amount,
-            currency: refundTx.currency,
-        };
+        return PaymentResponseDTO.from(found.transaction);
     }
 }

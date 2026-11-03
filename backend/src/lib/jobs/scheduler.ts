@@ -4,7 +4,13 @@ import {listJobs} from "./job-registry";
 
 const tasks: ScheduledTask[] = [];
 
-
+/**
+ * Boot every registered job. Each handler invocation is wrapped so a thrown
+ * error doesn't tear down the cron task — the next tick still runs.
+ *
+ * Concurrent invocations of the same job are dropped: if a tick is still
+ * running when the next fires, that tick is skipped (logged at debug).
+ */
 export function startAll(): void {
     const running = new Set<string>();
     for (const job of listJobs()) {
@@ -36,7 +42,7 @@ export function startAll(): void {
     }
 }
 
-
+/** Stop all scheduled tasks. Called from the worker's SIGINT/SIGTERM handler. */
 export async function stopAll(): Promise<void> {
     for (const t of tasks) {
         try {

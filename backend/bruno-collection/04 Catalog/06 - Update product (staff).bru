@@ -1,0 +1,22 @@
+meta {
+  name: Update product (staff)
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{coreBase}}/products/2?branchId=1
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{staffToken}}
+}
+
+body:json {
+  {
+    "stock": 100,
+    "price": 55
+  }
+}

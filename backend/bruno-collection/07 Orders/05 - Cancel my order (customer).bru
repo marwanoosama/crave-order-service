@@ -1,0 +1,24 @@
+meta {
+  name: Cancel my order (customer)
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{orderBase}}/customer/orders/{{orderId}}/status
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{customerToken}}
+  X-Region: {{region}}
+  Idempotency-Key: brave-order-cancel-1
+}
+
+body:json {
+  {
+    "status": "cancelled",
+    "reason": "changed my mind"
+  }
+}

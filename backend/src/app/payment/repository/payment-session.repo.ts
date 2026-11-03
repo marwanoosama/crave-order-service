@@ -72,21 +72,6 @@ export async function findActiveSessionByOrderId(orderId: number, conn: Knex): P
     return row ? toEntity(row) : undefined;
 }
 
-/**
- * Latest session for an order regardless of status. Webhook reconciliation
- * uses this: a Kashier session stays payable within its expireAt even after
- * a failed attempt (maxFailureAttempts), so a SUCCESS may arrive for a
- * session whose local status is `failed`.
- */
-export async function findLatestSessionByOrderId(orderId: number, conn: Knex): Promise<PaymentSessionEntity | undefined> {
-    const row = await conn("payment_sessions")
-        .select(PAYMENT_SESSION_COLUMNS as unknown as string[])
-        .where("order_id", orderId)
-        .orderBy("id", "desc")
-        .first();
-    return row ? toEntity(row) : undefined;
-}
-
 export async function updateSession(id: number, input: UpdateSessionRowInput, conn: Knex): Promise<PaymentSessionEntity> {
     const update: Record<string, unknown> = {
         status: input.status,

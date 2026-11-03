@@ -11,13 +11,13 @@ export interface CoreClientRequest {
     idempotencyKey?: string;
 }
 
-
+// ── branch ───────────────────────────────────────────────────────────────
 export interface CoreBranchMetadata {
     id: number;
     restaurantId: number;
     restaurantOwnerId: number;
     restaurantStatus: string;
-    region: string;       
+    region: string;       // country code
     isActive: boolean;
     acceptOrders: boolean;
     deliveryFee: number;
@@ -53,7 +53,7 @@ export interface ReserveStockResult {
     applied: ReserveStockApplied[];
 }
 
-
+// ── address ──────────────────────────────────────────────────────────────
 export interface CoreCustomerAddress {
     id: number;
     userId: number;
@@ -67,7 +67,7 @@ export interface CoreCustomerAddress {
     lng: number;
 }
 
-
+// ── rbac ─────────────────────────────────────────────────────────────────
 export interface RolePermissionsResponse {
     role: string;
     permissions: string[];

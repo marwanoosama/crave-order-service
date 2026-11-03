@@ -1,0 +1,26 @@
+meta {
+  name: Login (manager1)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{coreBase}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "manager1@crave.io",
+    "password": "Password123!"
+  }
+}
+
+script:post-response {
+  const {data} = res.getBody();
+    if (data && data.accessToken) {
+      bru.setEnvVar("managerToken", data.accessToken);
+      bru.setEnvVar("managerRefresh", data.refreshToken || "");
+    }
+}

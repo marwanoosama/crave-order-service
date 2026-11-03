@@ -1,3 +1,9 @@
+/**
+ * Outbound event type constants emitted by order-service.
+ * Routing keys consumed by analytics-service and any future subscribers.
+ *
+ * Naming: <aggregate>.<past-tense-verb>.
+ */
 export const EVENT_TYPES = {
     ORDER_PLACED: "order.placed",
     ORDER_ACCEPTED: "order.accepted",
@@ -6,8 +12,6 @@ export const EVENT_TYPES = {
     ORDER_CANCELLED: "order.cancelled",
     PAYMENT_COMPLETED: "payment.completed",
     PAYMENT_FAILED: "payment.failed",
-    PAYMENT_REFUNDED: "payment.refunded",
-    PAYMENT_REFUND_FAILED: "payment.refund_failed",
 } as const;
 
 export type EventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];

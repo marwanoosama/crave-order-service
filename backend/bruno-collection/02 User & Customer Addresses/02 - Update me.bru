@@ -1,0 +1,21 @@
+meta {
+  name: Update me
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{coreBase}}/user/me
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{customerToken}}
+}
+
+body:json {
+  {
+    "name": "Customer One"
+  }
+}

@@ -1,6 +1,6 @@
-import {PaginationMeta} from "../../lib/http/pagination/cursor-pagination";
-import {Currency, OrderStatus, PaymentMethod, StatusActor} from "./enums";
+import {OrderStatus, PaymentMethod, Currency, StatusActor} from "./enums";
 
+// ── repo inputs ──────────────────────────────────────────────────────────
 export interface CreateOrderInput {
     region: string;
     publicId: string;
@@ -35,6 +35,7 @@ export interface InsertOrderItemInput {
     lineTotal: number;
 }
 
+// ── repo filters ─────────────────────────────────────────────────────────
 export interface ListCustomerOrdersFilter {
     customerId: number;
     yearStart: Date;
@@ -51,9 +52,14 @@ export interface ListRestaurantOrdersFilter {
 
 export interface ListResult<T> {
     data: T[];
-    meta: PaginationMeta;
+    meta: {
+        nextCursor: string | null;
+        hasMore: boolean;
+        count: number;
+    };
 }
 
+// ── service-level helpers ────────────────────────────────────────────────
 export interface ActorContext {
     userId: number;
     role: string;
@@ -80,10 +86,13 @@ export interface OrderLineDraft {
 export interface AssertTransitionContext {
     actor: StatusActor;
     reason?: string;
+    /** required when actor === customer to enforce the cancel window */
     placedAt?: Date | null;
     acceptedAt?: Date | null;
 }
 
 export interface AssertTransitionResult {
+    /** Postgres column to stamp inside the same trx (null = no stamp) */
     stamp: string | null;
 }
+

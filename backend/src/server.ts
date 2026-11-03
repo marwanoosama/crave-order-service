@@ -6,10 +6,10 @@ import {logger} from "./lib/logger/logger";
 import {destroyAll, pingAll} from "./lib/knex/knex";
 import {messageBroker} from "./lib/messaging/init";
 import {startCoreEventsConsumer} from "./lib/core-events/consumer";
-import {orderModuleCoreEventHandlers} from "./app/order/core-events.handlers";
 import {attachWsServer} from "./lib/websocket/ws-server";
 import {container} from "./lib/di/container";
 import {TOKENS} from "./lib/di/tokens";
+import {registerOrderModuleCoreEventHandlers} from "./app/order/core-events.handlers";
 
 const app = createApp();
 const server = http.createServer(app);
@@ -31,9 +31,11 @@ server.listen(env.port, async () => {
         logger.error("shard ping failed", {error: (err as Error).message});
     }
 
+    registerOrderModuleCoreEventHandlers();
+
     messageBroker
         .connect()
-        .then(() => startCoreEventsConsumer(messageBroker, orderModuleCoreEventHandlers()))
+        .then(() => startCoreEventsConsumer(messageBroker))
         .catch((err) => {
             logger.warn("rabbitmq not reachable at boot — will retry", {err});
         });

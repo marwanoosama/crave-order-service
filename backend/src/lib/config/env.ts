@@ -2,7 +2,7 @@ import path from "path";
 import {config} from "dotenv";
 import {z} from "zod";
 
-
+// C:\Users\ABDULLAH\Desktop\quickbite\order-service\.env
 config({path: path.resolve(__dirname, "../../../.env")});
 
 const baseSchema = z.object({
@@ -36,7 +36,7 @@ const baseSchema = z.object({
     RABBITMQ_CORE_EVENTS_DLQ: z.string().default("order-service.core-events.dlq"),
     RABBITMQ_PREFETCH: z.string().default("32"),
 
-    
+    // Outbound: order.events exchange consumed by analytics-service & friends
     RABBITMQ_ORDER_EVENTS_EXCHANGE: z.string().default("order.events"),
     OUTBOUND_EVENTS_DRAIN_TICK_SEC: z.string().default("2"),
     OUTBOUND_EVENTS_BATCH_SIZE: z.string().default("100"),
@@ -47,35 +47,27 @@ const baseSchema = z.object({
     WS_HEARTBEAT_SEC: z.string().default("30"),
 
     KASHIER_BASE_URL: z.string().default("https://test-api.kashier.io"),
+    KASHIER_FEP_BASE_URL: z.string().default("https://test-fep.kashier.io"),
     KASHIER_MERCHANT_ID: z.string(),
     KASHIER_API_KEY: z.string(),
-    // Kashier's "secret key" — sent as the Authorization header on
-    // /v3/payment/sessions. (The webhook HMAC, per Kashier docs, is keyed with
-    // the API key, not this secret — see pkg/payments/kashier/kashier.signature.ts.)
-    KASHIER_WEBHOOK_SECRET: z.string(),
+    KASHIER_SECRET_KEY: z.string(),
     KASHIER_PAYMENT_TYPE: z.string().default("credit"),
     KASHIER_RETURN_URL: z.string(),
     KASHIER_FAIL_URL: z.string(),
-    // Publicly reachable URL of POST /api/payments/webhook/kashier. Sent to
-    // Kashier as the per-session `serverWebhook`. Optional: when empty, no
-    // serverWebhook is registered and the client-side confirm/verify flow
-    // replaced by the provider's own portal confirmation must be used.
-    // The region query param (?region=xx) is appended per session by the
-    // payment service — configure the base URL only.
-    KASHIER_WEBHOOK_URL: z.string().default(""),
+    KASHIER_WEBHOOK_URL: z.string(),
     PAYMENT_SESSION_TIMEOUT_MIN: z.string().default("15"),
     ONLINE_PAYMENT_REGIONS: z.string().default("eg"),
 
-    
-    PRESENCE_STALE_SEC: z.string().default("300"),                       
-    ASSIGNMENT_TICK_SEC: z.string().default("10"),                       
+    // Deliveries / agents
+    PRESENCE_STALE_SEC: z.string().default("300"),                       // 5 min — TTL on presence:meta:*
+    ASSIGNMENT_TICK_SEC: z.string().default("10"),                       // worker tick cadence
     ASSIGNMENT_RADIUS_METERS: z.string().default("5000"),
-    ASSIGNMENT_CANDIDATES: z.string().default("5"),                      
-    ASSIGNMENT_OFFER_TTL_SEC: z.string().default("30"),                  
-    ASSIGNMENT_CLAIM_TTL_SEC: z.string().default("300"),                 
+    ASSIGNMENT_CANDIDATES: z.string().default("5"),                      // top N agents per offer
+    ASSIGNMENT_OFFER_TTL_SEC: z.string().default("30"),                  // offer:order:* lifetime
+    ASSIGNMENT_CLAIM_TTL_SEC: z.string().default("300"),                 // claim:order:* lifetime
     ASSIGNMENT_MAX_ATTEMPTS: z.string().default("3"),
-    ASSIGNMENT_BATCH: z.string().default("20"),                          
-    AGENT_EARNING_SHARE_BPS: z.string().default("8000"),                 
+    ASSIGNMENT_BATCH: z.string().default("20"),                          // ready orders processed per tick
+    AGENT_EARNING_SHARE_BPS: z.string().default("8000"),                 // 80% of order.delivery_fee
 });
 
 const parsed = baseSchema.parse(process.env);
@@ -96,7 +88,7 @@ export interface ShardConfig {
 }
 
 function readShardConfig(region: string, prefix: "DB" | "ARCHIVE_DB"): ShardConfig {
-    
+    // eg, DB
     const hostKey = `${prefix}_${region}_HOST`;
     const portKey = `${prefix}_${region}_PORT`;
     const userKey = `${prefix}_${region}_USERNAME`;
@@ -191,9 +183,10 @@ export const env = {
 
     kashier: {
         baseUrl: parsed.KASHIER_BASE_URL,
+        fepBaseUrl: parsed.KASHIER_FEP_BASE_URL,
         merchantId: parsed.KASHIER_MERCHANT_ID,
         apiKey: parsed.KASHIER_API_KEY,
-        secretKey: parsed.KASHIER_WEBHOOK_SECRET,
+        secretKey: parsed.KASHIER_SECRET_KEY,
         paymentType: parsed.KASHIER_PAYMENT_TYPE,
         returnUrl: parsed.KASHIER_RETURN_URL,
         failUrl: parsed.KASHIER_FAIL_URL,

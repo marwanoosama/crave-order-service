@@ -1,5 +1,8 @@
  import {env} from "../config/env";
 
+// Region codes are normalized to lowercase. Country codes from core may
+// arrive uppercase ("EG") or from clients in either case; the router
+// always works on lowercase.
 const set = new Set(env.regions.map((r) => r.toLowerCase()));
 export const REGIONS: ReadonlyArray<string> = env.regions;
 

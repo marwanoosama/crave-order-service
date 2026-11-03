@@ -3,21 +3,19 @@ import http from "http";
 import {logger} from "./lib/logger/logger";
 import {destroyAll, pingAll} from "./lib/knex/knex";
 import {messageBroker} from "./lib/messaging/init";
+import {startCoreEventsConsumer} from "./lib/core-events/consumer";
 import {attachWsServer} from "./lib/websocket/ws-server";
 import {container} from "./lib/di/container";
 import {TOKENS} from "./lib/di/tokens";
 import {startAll, stopAll} from "./lib/jobs/scheduler";
+import {registerOrderModuleCoreEventHandlers} from "./app/order/core-events.handlers";
+import {registerAssignmentJobs} from "./app/assignment/jobs";
 import {registerOutboxDrainJobs} from "./lib/events/jobs";
-import {registerPendingPaymentSweepJobs} from "./app/order/jobs";
 
 /**
  * Background worker process. All it does is boot the shared infra and hand
  * control to the cron scheduler. Adding a new background job means: create
  * a `register({...})` call somewhere and import it here. No other wiring.
- *
- * Note: the worker must NOT consume the `core.events` queue — that is the
- * API process's consumer (cache-invalidation handlers live there), and
- * amqp round-robins deliveries between connected consumers.
  */
 
 // Socket.io needs an http.Server to attach to even if we don't listen on a
@@ -28,8 +26,8 @@ const io = attachWsServer(noopServer);
 container.registerInstance(TOKENS.WsServer, io);
 
 // ── Job registrations ───────────────────────────────────────────────────
+registerAssignmentJobs();
 registerOutboxDrainJobs();
-registerPendingPaymentSweepJobs();
 // registerOrderArchiveJobs
 // (Future jobs land here: payouts sweep, archival, presence GC, etc.)
 
@@ -42,9 +40,11 @@ async function main() {
         else logger.warn("worker shard unreachable", {region: r.region, cluster: r.cluster, error: r.error});
     }
 
-    await messageBroker.connect().catch((err) =>
-        logger.warn("worker rabbitmq not reachable at boot", {err}),
-    );
+    registerOrderModuleCoreEventHandlers();
+    messageBroker
+        .connect()
+        .then(() => startCoreEventsConsumer(messageBroker))
+        .catch((err) => logger.warn("worker rabbitmq not reachable at boot", {err}));
 
     startAll();
 }

@@ -1,0 +1,27 @@
+meta {
+  name: Record payout (admin)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{orderBase}}/admin/restaurants/1/payouts
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{adminToken}}
+  X-Region: {{region}}
+  Idempotency-Key: brave-payout-1
+}
+
+body:json {
+  {
+    "restaurantId": 1,
+    "amount": 1000,
+    "currency": "EGP",
+    "providerReferenceId": "brave-payout-1",
+    "note": "manual transfer"
+  }
+}

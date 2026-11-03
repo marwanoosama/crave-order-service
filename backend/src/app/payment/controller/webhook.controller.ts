@@ -12,10 +12,7 @@ export class WebhookController {
         try {
             if (!req.rawBody) throw MalformedWebhookError;
 
-            const sigHeader =
-                req.headers["x-kashier-signature"] ??
-                req.headers["signature"] ??
-                req.headers["x-signature"];
+            const sigHeader = req.headers["x-kashier-signature"];
             const signature = Array.isArray(sigHeader) ? sigHeader[0] : sigHeader;
 
             await this.kashierWebhook.processKashierWebhook(req.rawBody, signature, req.region!);

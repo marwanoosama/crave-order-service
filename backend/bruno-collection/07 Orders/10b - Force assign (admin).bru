@@ -1,0 +1,23 @@
+meta {
+  name: Force assign (admin)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{orderBase}}/admin/orders/{{orderId}}/assign
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{adminToken}}
+  X-Region: {{region}}
+  Idempotency-Key: brave-assign-1
+}
+
+body:json {
+  {
+    "agentId": 13
+  }
+}

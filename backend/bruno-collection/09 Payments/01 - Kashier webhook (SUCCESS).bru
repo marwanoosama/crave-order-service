@@ -1,0 +1,30 @@
+meta {
+  name: Kashier webhook (SUCCESS — sign payload, see docs)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{orderBase}}/payments/webhook/kashier?region=eg
+  body: json
+  auth: none
+}
+
+headers {
+  x-kashier-signature: REPLACE_WITH_HMAC_SHA256
+}
+
+body:json {
+  {
+    "event": "pay",
+    "type": "transaction",
+    "status": "SUCCESS",
+    "data": {
+      "id": "demo-tx-1",
+      "amount": "155.00",
+      "currency": "EGP",
+      "mid": "MID-53462-938"
+    },
+    "merchantOrderId": "{{onlineOrderId}}"
+  }
+}

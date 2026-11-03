@@ -1,0 +1,15 @@
+meta {
+  name: Refresh
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{coreBase}}/auth/refresh
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: refresh_token={{customerRefresh}}
+}

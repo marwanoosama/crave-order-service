@@ -1,0 +1,21 @@
+meta {
+  name: Update member
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{coreBase}}/restaurants/1/members/3
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{ownerToken}}
+}
+
+body:json {
+  {
+    "roleId": 3
+  }
+}

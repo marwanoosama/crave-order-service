@@ -1,0 +1,16 @@
+meta {
+  name: Restaurant balance (owner)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{orderBase}}/restaurants/1/balance
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{ownerToken}}
+  X-Region: {{region}}
+}

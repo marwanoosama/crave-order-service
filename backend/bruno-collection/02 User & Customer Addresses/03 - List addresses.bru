@@ -1,0 +1,15 @@
+meta {
+  name: List addresses
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{coreBase}}/customer/addresses
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{customerToken}}
+}

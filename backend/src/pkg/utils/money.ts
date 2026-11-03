@@ -1,5 +1,5 @@
-
-
+// All money in this service is expressed as INT minor units
+// (piasters, halalas). Display formatting is the client's job.
 
 export function toMinor(majorUnits: number): number {
     return Math.round(majorUnits * 100);

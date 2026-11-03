@@ -1,0 +1,15 @@
+meta {
+  name: Products of restaurant (owner)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{coreBase}}/restaurants/1/products?branchId=1
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{ownerToken}}
+}

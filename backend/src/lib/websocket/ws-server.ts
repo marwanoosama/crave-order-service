@@ -7,7 +7,14 @@ import {logger} from "../logger/logger";
 import {redisClient} from "../cache/init";
 import {authenticateHandshake, permittedChannels} from "./ws-auth";
 
-
+/**
+ * Attaches a socket.io server on /ws with a Redis pub/sub adapter.
+ * Multi-process fan-out is automatic: `io.to(room).emit(...)` on any worker
+ * reaches every connected socket in every worker for that room.
+ *
+ * Reuses the shared `redisClient` for PUBLISH; duplicates it for the
+ * subscriber (ioredis can't serve commands once in subscribe mode).
+ */
 export function attachWsServer(httpServer: HttpServer): IOServer {
     const io = new IOServer(httpServer, {
         path: "/ws",

@@ -4,7 +4,13 @@ import {TOKENS} from "../di/tokens";
 import {ICacheProvider} from "../../pkg/cache/cache.interface";
 import {toSeconds} from "../../pkg/utils/time";
 import {logger} from "../logger/logger";
-import {CoreEnvelope,CoreBranchMetadata,CoreBranchProduct,ReserveStockItem,ReserveStockResult,} from "./types";
+import {
+    CoreEnvelope,
+    CoreBranchMetadata,
+    CoreBranchProduct,
+    ReserveStockItem,
+    ReserveStockResult,
+} from "./types";
 
 const BRANCH_CACHE_TTL = toSeconds(1, "h");
 const PRODUCT_CACHE_TTL = toSeconds(1, "h");
@@ -21,12 +27,17 @@ function cache(): ICacheProvider {
     return container.resolve<ICacheProvider>(TOKENS.CacheProvider);
 }
 
-
+/**
+ * Read-through cache for a single branch. Cache entries live at
+ * `core:branch:<id>` and are invalidated by `core-data-cache.service`'s
+ * inbound `branch.updated` / `branch.deactivated` AMQP handlers — so a
+ * branch toggle in core propagates here within one event-loop cycle.
+ */
 export async function getBranch(branchId: number, correlationId?: string): Promise<CoreBranchMetadata> {
     const c = cache();
     const cached = await c.get(branchCacheKey(branchId));
     if (cached) {
-        try { return JSON.parse(cached) as CoreBranchMetadata; } catch {  }
+        try { return JSON.parse(cached) as CoreBranchMetadata; } catch { /* fall through */ }
     }
     const res = await coreClient.request<CoreEnvelope<CoreBranchMetadata>>({
         method: "GET",
@@ -39,7 +50,16 @@ export async function getBranch(branchId: number, correlationId?: string): Promi
     return res.data;
 }
 
-
+/**
+ * Batch variant. Returns a Map<branchId, metadata> covering only the ids that
+ * resolved (missing/invalid ids are silently dropped — caller decides how to
+ * handle them). Reads cache for every id, falls back to a SINGLE batch call
+ * to core for the misses, populates the cache.
+ *
+ * Use this whenever you have a list of branch ids to enrich (agent task list,
+ * restaurant order list with multiple branches, etc.) so the network is at
+ * most one round-trip regardless of N.
+ */
 export async function getBranchesByIds(
     branchIds: number[],
     correlationId?: string,
@@ -49,7 +69,7 @@ export async function getBranchesByIds(
     const unique = Array.from(new Set(branchIds));
     const c = cache();
 
-    
+    // Cache pass.
     const misses: number[] = [];
     await Promise.all(
         unique.map(async (id) => {
@@ -58,14 +78,14 @@ export async function getBranchesByIds(
                 try {
                     result.set(id, JSON.parse(raw) as CoreBranchMetadata);
                     return;
-                } catch {  }
+                } catch { /* fall through to network */ }
             }
             misses.push(id);
         }),
     );
     if (misses.length === 0) return result;
 
-    
+    // Network pass — single batch call.
     const ids = misses.join(",");
     const res = await coreClient.request<CoreEnvelope<CoreBranchMetadata[]>>({
         method: "GET",
@@ -81,7 +101,12 @@ export async function getBranchesByIds(
     return result;
 }
 
-
+/**
+ * Read-through cache for branch products. Entries live at
+ * `core:branch:<bid>:product:<pid>` and are kept fresh by the inbound
+ * `product.price.changed` / `product.stock.changed` handlers in
+ * core-data-cache.service. Only the missing ids hit core's HTTP endpoint.
+ */
 export async function getBranchProducts(
     branchId: number,
     productIds: number[],
@@ -102,9 +127,9 @@ export async function getBranchProducts(
             }
             try {
                 const parsed = JSON.parse(raw) as Partial<CoreBranchProduct>;
-                
-                
-                
+                // Event-driven cache entries are partial — they hold price /
+                // stock / isAvailable but no name/imageUrl. Treat as a miss
+                // so we fetch the full row from core.
                 if (parsed.name === undefined) {
                     misses.push(pid);
                     return;
@@ -125,8 +150,8 @@ export async function getBranchProducts(
         correlationId,
     });
 
-    
-    
+    // Populate the cache with the full rows we just fetched. Events that
+    // arrive later for these products will MERGE on top via core-data-cache.
     await Promise.all(
         res.data.map((p) =>
             c
@@ -140,7 +165,12 @@ export async function getBranchProducts(
     return [...cached, ...res.data];
 }
 
-export async function reserveStock(branchId: number, items: ReserveStockItem[], idempotencyKey?: string, correlationId?: string,): Promise<ReserveStockResult> {
+export async function reserveStock(
+    branchId: number,
+    items: ReserveStockItem[],
+    idempotencyKey?: string,
+    correlationId?: string,
+): Promise<ReserveStockResult> {
     const res = await coreClient.request<CoreEnvelope<ReserveStockResult>>({
         method: "POST",
         path: `/api/internal/branches/${branchId}/reserve-stock`,

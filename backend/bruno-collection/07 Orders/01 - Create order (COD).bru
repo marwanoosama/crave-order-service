@@ -1,0 +1,36 @@
+meta {
+  name: Create order (COD)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{orderBase}}/orders
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{customerToken}}
+  X-Region: {{region}}
+  Idempotency-Key: brave-order-cod-1
+}
+
+body:json {
+  {
+    "branchId": 1,
+    "customerAddressId": 1,
+    "paymentMethod": "cod",
+    "items": [
+      {
+        "productId": 2,
+        "quantity": 1
+      }
+    ]
+  }
+}
+
+script:post-response {
+  const {data} = res.getBody();
+    if (data && data.publicId) { bru.setEnvVar("orderId", data.publicId); }
+}

@@ -1,0 +1,27 @@
+meta {
+  name: Invite member (owner)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{coreBase}}/restaurants/1/members
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{ownerToken}}
+}
+
+body:json {
+  {
+    "email": "invited.bruno@crave.io",
+    "name": "Invited Staff",
+    "phoneNumber": "01099999993",
+    "role": "staff",
+    "branchIds": [
+      1
+    ]
+  }
+}

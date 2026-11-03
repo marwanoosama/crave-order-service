@@ -1,0 +1,23 @@
+meta {
+  name: Status → preparing (staff)
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{orderBase}}/restaurants/1/branches/1/orders/{{orderId}}/status
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{staffToken}}
+  X-Region: {{region}}
+  Idempotency-Key: brave-status-2
+}
+
+body:json {
+  {
+    "status": "preparing"
+  }
+}

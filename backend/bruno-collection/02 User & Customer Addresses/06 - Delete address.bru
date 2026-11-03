@@ -1,0 +1,15 @@
+meta {
+  name: Delete address
+  type: http
+  seq: 1
+}
+
+delete {
+  url: {{coreBase}}/customer/addresses/6
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{customerToken}}
+}

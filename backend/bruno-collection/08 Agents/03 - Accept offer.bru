@@ -1,0 +1,17 @@
+meta {
+  name: Accept offer
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{orderBase}}/agents/orders/{{orderId}}/accept
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{agentToken}}
+  X-Region: {{region}}
+  Idempotency-Key: brave-accept-1
+}

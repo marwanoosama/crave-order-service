@@ -5,6 +5,3 @@ export const PaymentProviderUnavailableError = new AppError("Payment provider un
 export const PaymentNotFoundError = new AppError("PaymentNotFound", 404);
 export const InvalidWebhookSignatureError = new AppError("InvalidSignature", 401);
 export const MalformedWebhookError = new AppError("MalformedWebhook", 400);
-export const PaymentAlreadyRefundedError = new AppError("PaymentAlreadyRefunded", 409);
-export const InvalidRefundAmountError = new AppError("InvalidRefundAmount", 400);
-export const PaymentCannotBeRefundedError = new AppError("PaymentCannotBeRefunded", 409);

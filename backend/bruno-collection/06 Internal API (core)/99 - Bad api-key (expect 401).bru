@@ -1,0 +1,15 @@
+meta {
+  name: Bad api-key (expect 401)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{coreBase}}/internal/branches/1
+  body: none
+  auth: none
+}
+
+headers {
+  api-key: wrong
+}

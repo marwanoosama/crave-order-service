@@ -1,0 +1,15 @@
+meta {
+  name: Branches by ids
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{coreBase}}/internal/branches?ids=1,2,3
+  body: none
+  auth: none
+}
+
+headers {
+  api-key: dev-internal-api-key
+}

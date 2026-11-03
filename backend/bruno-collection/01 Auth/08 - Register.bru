@@ -1,0 +1,21 @@
+meta {
+  name: Register
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{coreBase}}/auth/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "new.customer@crave.io",
+    "phone": "01099999991",
+    "name": "New Customer",
+    "password": "Newpass123!",
+    "role": "customer"
+  }
+}

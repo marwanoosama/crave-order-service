@@ -1,0 +1,23 @@
+meta {
+  name: Presence ping
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{orderBase}}/agents/presence/ping
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{agentToken}}
+  X-Region: {{region}}
+}
+
+body:json {
+  {
+    "lat": 30.0566,
+    "lng": 31.3303
+  }
+}

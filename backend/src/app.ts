@@ -1,4 +1,4 @@
-import express, {Request} from "express";
+import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
@@ -13,11 +13,11 @@ export function createApp() {
     app.use(helmet());
     app.use(cors({origin: env.cors.origins, credentials: true}));
     app.set("query parser", "extended");
+    // Stash the raw request body so the webhook handlers can verify HMAC
+    // signatures byte-for-byte over the original payload.
     app.use(express.json({
-        // Keep the raw buffer so webhook HMAC verification hashes the exact
-        // bytes the provider signed, not a re-serialized object.
         verify: (req, _res, buf) => {
-            (req as unknown as Request).rawBody = buf;
+            (req as any).rawBody = buf;
         },
     }));
     app.use(cookieParser());

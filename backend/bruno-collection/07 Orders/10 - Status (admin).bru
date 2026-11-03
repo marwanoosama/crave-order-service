@@ -1,0 +1,24 @@
+meta {
+  name: Status (admin)
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{orderBase}}/admin/orders/{{orderId}}/status
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{adminToken}}
+  X-Region: {{region}}
+  Idempotency-Key: brave-status-admin-1
+}
+
+body:json {
+  {
+    "status": "cancelled",
+    "reason": "admin cancel"
+  }
+}

@@ -1,0 +1,16 @@
+meta {
+  name: My orders (customer)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{orderBase}}/customer/orders
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{customerToken}}
+  X-Region: {{region}}
+}

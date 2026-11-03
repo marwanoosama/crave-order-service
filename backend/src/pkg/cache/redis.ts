@@ -2,10 +2,15 @@ import Redis from "ioredis";
 import type {ICacheProvider} from "./cache.interface";
 
 export class RedisCacheProvider implements ICacheProvider {
-    
+    /**
+     * Exposed so integrations that need the raw ioredis connection (e.g. the
+     * socket.io redis adapter) can reuse it instead of opening another one.
+     * The adapter still needs its own subscriber via `client.duplicate()` —
+     * once ioredis is in subscribe mode it can't serve get/set.
+     */
     constructor(public readonly client: Redis) {}
 
-    
+    // ── Strings ──────────────────────────────────────────────────────────
 
     async get(key: string): Promise<string | null> {
         return this.client.get(key);
@@ -21,37 +26,6 @@ export class RedisCacheProvider implements ICacheProvider {
 
     async del(key: string): Promise<number> {
         return this.client.del(key);
-    }
-
-    /**
-     * SCAN-based collective delete. Never uses KEYS (blocks the Redis
-     * server); batches every 200 scanned keys to cap growth in fan-outs.
-     */
-    async delByPattern(pattern: string): Promise<number> {
-        let cursor = "0";
-        let deleted = 0;
-        let batch: string[] = [];
-
-        do {
-            const [next, keys] = await this.client.scan(
-                cursor,
-                "MATCH",
-                pattern,
-                "COUNT",
-                200,
-            );
-            cursor = next;
-            if (keys.length > 0) batch = batch.concat(keys);
-            if (batch.length > 0 && (cursor === "0" || batch.length >= 500)) {
-                deleted += await this.client.del(...batch);
-                batch = [];
-            }
-        } while (cursor !== "0");
-
-        if (batch.length > 0) {
-            deleted += await this.client.del(...batch);
-        }
-        return deleted;
     }
 
     async trySet(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
@@ -77,22 +51,22 @@ export class RedisCacheProvider implements ICacheProvider {
         return this.client.ttl(key);
     }
 
-    
+    // ── Hashes ───────────────────────────────────────────────────────────
 
     async hsetWithTtl(
         key: string,
         fields: Record<string, string>,
         ttlSeconds?: number,
     ): Promise<void> {
-        
-        
-        
+        // HSET + EXPIRE in a single round-trip via MULTI. If we did them
+        // sequentially, a crash between the two would leave a hash without a
+        // TTL — i.e. an agent who silently became "permanently online".
         const tx = this.client.multi().hset(key, fields);
         if (ttlSeconds) tx.expire(key, ttlSeconds);
         await tx.exec();
     }
 
-    
+    // ── Sets ─────────────────────────────────────────────────────────────
 
     async sadd(key: string, member: string): Promise<void> {
         await this.client.sadd(key, member);
@@ -106,12 +80,12 @@ export class RedisCacheProvider implements ICacheProvider {
         return (await this.client.sismember(key, member)) === 1;
     }
 
-    
+    // ── Geo / sorted sets ────────────────────────────────────────────────
 
     async geoadd(key: string, lng: number, lat: number, member: string): Promise<void> {
         await this.client.geoadd(key, lng, lat, member);
     }
-    
+    // delivery_agents
 
     async zrem(key: string, member: string): Promise<void> {
         await this.client.zrem(key, member);

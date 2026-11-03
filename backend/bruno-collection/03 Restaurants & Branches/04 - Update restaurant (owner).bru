@@ -1,0 +1,21 @@
+meta {
+  name: Update restaurant (owner)
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{coreBase}}/restaurants/1
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{ownerToken}}
+}
+
+body:json {
+  {
+    "name": "Burger Nation (edited)"
+  }
+}

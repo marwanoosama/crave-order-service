@@ -1,0 +1,15 @@
+meta {
+  name: Get me
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{coreBase}}/user/me
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{customerToken}}
+}

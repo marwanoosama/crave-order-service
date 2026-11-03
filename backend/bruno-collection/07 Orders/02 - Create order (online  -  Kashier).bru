@@ -1,0 +1,36 @@
+meta {
+  name: Create order (online / Kashier)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{orderBase}}/orders
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{customerToken}}
+  X-Region: {{region}}
+  Idempotency-Key: brave-order-online-1
+}
+
+body:json {
+  {
+    "branchId": 1,
+    "customerAddressId": 1,
+    "paymentMethod": "online",
+    "items": [
+      {
+        "productId": 3,
+        "quantity": 1
+      }
+    ]
+  }
+}
+
+script:post-response {
+  const {data} = res.getBody();
+    if (data && data.publicId) { bru.setEnvVar("onlineOrderId", data.publicId); }
+}

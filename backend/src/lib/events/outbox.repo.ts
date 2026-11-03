@@ -2,6 +2,11 @@ import type {Knex} from "knex";
 import {randomUUID} from "crypto";
 import {OutboxRow, InsertOutboxInput} from "./types";
 
+/**
+ * Insert an event in the SAME trx as the domain mutation that produced it.
+ * Caller passes their region-bound Knex (or trx). Dispatch happens later via
+ * the drainer — this function does not touch RabbitMQ.
+ */
 export async function insertOutboxEvent(conn: Knex, input: InsertOutboxInput): Promise<void> {
     await conn("events_outbox").insert({
         aggregate_type: input.aggregateType,
@@ -12,16 +17,32 @@ export async function insertOutboxEvent(conn: Knex, input: InsertOutboxInput): P
     });
 }
 
-// Rows that exceed this attempt count are dropped as poison (logged); they
-// would otherwise sit at the head of the drain queue forever.
-const MAX_ATTEMPTS = 10;
+/**
+ * Bulk variant — single INSERT with N rows. Use whenever a service mutates
+ * multiple aggregates in one trx so we don't pay N round-trips to Postgres.
+ */
+export async function insertOutboxEvents(conn: Knex, inputs: InsertOutboxInput[]): Promise<void> {
+    if (inputs.length === 0) return;
+    await conn("events_outbox").insert(
+        inputs.map((i) => ({
+            aggregate_type: i.aggregateType,
+            aggregate_id: String(i.aggregateId),
+            event_type: i.eventType,
+            event_id: randomUUID(),
+            payload: JSON.stringify(i.payload),
+        })),
+    );
+}
 
-export async function takePendingOutboxEvents(conn: Knex, limit: number): Promise<OutboxRow[]> {
+/**
+ * Dispatcher claim — selects a batch of undispatched rows and locks them so
+ * another drainer process won't pick up the same rows. Caller is responsible
+ * for committing/rolling back the trx.
+ */
+export async function claimBatch(conn: Knex, limit: number): Promise<OutboxRow[]> {
     const rows = await conn("events_outbox")
         .select("id", "aggregate_type", "aggregate_id", "event_type", "event_id", "payload", "attempts")
         .whereNull("dispatched_at")
-        .where("attempts", "<", MAX_ATTEMPTS)
-        .orderBy("attempts", "asc")
         .orderBy("id", "asc")
         .limit(limit)
         .forUpdate()
@@ -29,31 +50,11 @@ export async function takePendingOutboxEvents(conn: Knex, limit: number): Promis
     return rows as OutboxRow[];
 }
 
-/**
- * Retired rows: poison events beyond MAX_ATTEMPTS are marked dispatched with
- * last_error kept for the audit trail, so the queue never stalls on them.
- */
-export async function retireDeadOutboxEvents(conn: Knex): Promise<number> {
-    const count = await conn("events_outbox")
-        .whereNull("dispatched_at")
-        .where("attempts", ">=", MAX_ATTEMPTS)
-        .count<{c: string}[]>("* as c")
-        .then((rows) => Number(rows[0]?.c ?? 0));
-    if (count === 0) return 0;
-
-    await conn("events_outbox")
-        .whereNull("dispatched_at")
-        .where("attempts", ">=", MAX_ATTEMPTS)
-        .returning(["id"])
-        .update({dispatched_at: new Date()});
-    return count;
-}
-
-export async function markOutboxEventDispatched(conn: Knex, id: string): Promise<void> {
+export async function markDispatched(conn: Knex, id: string): Promise<void> {
     await conn("events_outbox").where({id}).update({dispatched_at: new Date()});
 }
 
-export async function markOutboxEventFailed(conn: Knex, id: string, err: string): Promise<void> {
+export async function markFailed(conn: Knex, id: string, err: string): Promise<void> {
     await conn("events_outbox")
         .where({id})
         .update({

@@ -1,5 +1,5 @@
 import {randomUUID} from "crypto";
-import {inject, injectable} from "tsyringe";
+import {injectable, inject} from "tsyringe";
 import {Server as IoServer} from "socket.io";
 import {container} from "../../../lib/di/container";
 import {TOKENS} from "../../../lib/di/tokens";
@@ -8,60 +8,56 @@ import {assertRegion} from "../../../lib/sharding/regions";
 import {ICacheProvider} from "../../../pkg/cache/cache.interface";
 import {logger} from "../../../lib/logger/logger";
 import {UnAuthorisedError} from "../../../lib/auth/errors";
-import {multiplyMinor, sumMinor} from "../../../pkg/utils/money";
-import {FilterParams, PaginationParams} from "../../../lib/http/pagination/cursor-pagination";
+import {sumMinor, multiplyMinor} from "../../../pkg/utils/money";
+import {PaginationParams, FilterParams} from "../../../lib/http/pagination/cursor-pagination";
 import {
     getBranch,
     getBranchProducts,
-    releaseStock as coreReleaseStock,
     reserveStock as coreReserveStock,
+    releaseStock as coreReleaseStock,
 } from "../../../lib/core-client/branch.client";
 import {CoreBranchProduct} from "../../../lib/core-client/types";
-import {flattenAddress, getCustomerAddress} from "../../../lib/core-client/address.client";
+import {getCustomerAddress, flattenAddress} from "../../../lib/core-client/address.client";
 import {CoreDataCacheService} from "./core-data-cache.service";
 import {PaymentService} from "../../payment/service/payment.service";
 import {assertTransition} from "./order-status.service";
 import {OrderEntity} from "../entity/order.entity";
 import {OrderItemEntity} from "../entity/order-item.entity";
-import {Currency, OrderStatus, PaymentMethod, StatusActor} from "../enums";
-import {ActorContext, CreateOrderInput, OrderLineDraft, UnavailableItem} from "../types";
+import {OrderStatus, PaymentMethod, Currency, StatusActor} from "../enums";
+import {ActorContext, OrderLineDraft, UnavailableItem} from "../types";
 import {
+    OrderNotFoundError,
     BranchNotAcceptingOrdersError,
     OnlinePaymentNotAvailableError,
-    OrderNotFoundError,
     outOfStockError,
 } from "../errors";
 import {env} from "../../../lib/config/env";
 import {
-    OrderDetailResponseDTO,
-    OrderPaymentSummary,
     OrderResponseDTO,
-    OrderResponsePaymentInfo,
-    OrderStatusResponseDTO,
+    OrderDetailResponseDTO,
     OrderSummaryResponseDTO,
+    OrderStatusResponseDTO,
 } from "../dto/order.response.dto";
 import {CreateOrderRequestDTO, UpdateOrderStatusRequestDTO} from "../dto/order.request.dto";
 import {
     createOrder,
     findOrderByPublicId,
+    updateOrderStatus,
     findOrdersByCustomer,
     findOrdersByRestaurantBranch,
-    updateOrderStatus,
 } from "../repository/order.repo";
-import {bulkInsertItems, countItemsByOrderIds, findItemsByOrderIds} from "../repository/order-item.repo";
-import {findTransactionsByOrderIds} from "../../payment/repository/transaction.repo";
-import {TransactionType, TransactionStatus} from "../../payment/enums";
-import {TransactionEntity} from "../../payment/entity/transaction.entity";
+import {
+    bulkInsertItems,
+    findItemsByOrderIds,
+    countItemsByOrderIds,
+} from "../repository/order-item.repo";
 import {insertOutboxEvent} from "../../../lib/events/outbox.repo";
 import {EVENT_TYPES} from "../../../lib/events/event-types";
 
-const SERVICE_FEE_MINOR = 1000;
+const SERVICE_FEE_MINOR = 1000; // 10.00 EGP / SAR — paid to the platform.
 
-const OUTBOX_EVENT_FOR_STATUS: Partial<Record<OrderStatus, string>> = {
-    [OrderStatus.ACCEPTED]: EVENT_TYPES.ORDER_ACCEPTED,
-    [OrderStatus.REJECTED]: EVENT_TYPES.ORDER_REJECTED,
-    [OrderStatus.CANCELLED]: EVENT_TYPES.ORDER_CANCELLED,
-};
+const RESTAURANT_ORDERS_CACHE_PREFIX = (region: string, branchId: number) =>
+    `${region}:GET:/api/restaurant/orders?branchId=${branchId}`;
 
 @injectable()
 export class OrderService {
@@ -71,61 +67,60 @@ export class OrderService {
         @inject(TOKENS.PaymentService) private readonly paymentService: PaymentService,
     ) {}
 
+    // Lazy access — WsServer is registered after the DI container builds the
+    // routes (it depends on the http.Server, which is created in server.ts).
     private get io(): IoServer {
         return container.resolve<IoServer>(TOKENS.WsServer);
     }
 
-    placeOrder = async (
-        actor: ActorContext,
-        body: CreateOrderRequestDTO,
-        region: string | undefined,
-        correlationId?: string,
-    ): Promise<OrderResponseDTO> => {
-        // get the branch from core-service and check if it's active and accepting orders
-        // we check first in cache, if not send a request to core-service
+    async placeOrder(actor: ActorContext, body: CreateOrderRequestDTO, region: string | undefined, correlationId?: string): Promise<OrderResponseDTO> {
+        // 1. Branch metadata (drives shard region + accept flag + currency + delivery fee)
         const branch = await getBranch(body.branchId, correlationId);
-        if (!branch.isActive || !branch.acceptOrders || branch.restaurantStatus !== "active") {
-            throw BranchNotAcceptingOrdersError;
-        }
+        if (!branch.isActive || !branch.acceptOrders) throw BranchNotAcceptingOrdersError;
+        if (branch.restaurantStatus !== "active") throw BranchNotAcceptingOrdersError;
+        if (await this.coreData.isBranchRejectingOrders(body.branchId)) throw BranchNotAcceptingOrdersError;
 
-        // check if branch is rejecting orders using the core cache service
-        // if the branch status is changed from the core service to not accepting orders
-        // an event is triggered and the cache is changed
-        if (await this.coreData.isBranchRejectingOrders(body.branchId)) {
-            throw BranchNotAcceptingOrdersError;
-        }
-
-        // make sure of the region name passed and correct it
+        // Branch country may arrive uppercase ("EG"); shard router is lowercase.
         const resolvedRegion = assertRegion(region ?? branch.region);
+
+        // Online gateway is enabled per-region (env-driven). Anything else falls
+        // back to COD-only — fail fast before we touch stock.
         if (body.paymentMethod === PaymentMethod.ONLINE && !env.payments.onlineRegions.has(resolvedRegion)) {
             throw OnlinePaymentNotAvailableError;
         }
 
+        // 2. Address (snapshot lat/lng + flat text)
         const address = await getCustomerAddress(body.customerAddressId, correlationId);
         if (Number(address.userId) !== Number(actor.userId)) throw UnAuthorisedError;
 
-        // get the requested products from branches
-        const products = await getBranchProducts(
+        // 3. Products (single batch)
+        const productIds = body.items.map((i) => i.productId);
+        const products = await getBranchProducts(body.branchId, productIds, correlationId);
+        const orderLineDrafts = this.buildOrderLineDrafts(body.items, products);
+
+        // 4. Money
+        const subtotal = sumMinor(orderLineDrafts.map((l) => l.lineTotal));
+        const total = subtotal + branch.deliveryFee + SERVICE_FEE_MINOR;
+
+        // 5. Reserve stock FIRST. If anything below this point fails, we MUST release.
+        // Reserve is atomic on the core side (FOR UPDATE + 409 on underflow) so we
+        // can't oversell. Using the publicId as the idempotency key means a retry
+        // never double-reserves.
+        const publicId = randomUUID();
+        await coreReserveStock(
             body.branchId,
-            body.items.map((item) => item.productId),
+            body.items.map((i) => ({productId: i.productId, quantity: i.quantity})),
+            publicId,
             correlationId,
         );
 
-        // build the order lines (each product and its quantity, ...)
-        const lines = this.buildOrderLines(body.items, products);
-        const subtotal = sumMinor(lines.map((line) => line.lineTotal));
-        const total = subtotal + branch.deliveryFee + SERVICE_FEE_MINOR;
-        const publicId = randomUUID();
-
-        // stock is reserved before the DB write, release on failure
-        await coreReserveStock(body.branchId, body.items, publicId, correlationId);
-
+        // 6. Trx on the branch's region
         const conn = db(resolvedRegion);
         const trx = await conn.transaction();
         let order: OrderEntity;
         let items: OrderItemEntity[];
         try {
-            const orderInput: CreateOrderInput = {
+            order = await createOrder({
                 region: resolvedRegion,
                 publicId,
                 countryCode: branch.region,
@@ -139,35 +134,32 @@ export class OrderService {
                 deliveryAddressTextSnapshot: flattenAddress(address),
                 branchLat: Number(branch.lat),
                 branchLng: Number(branch.lng),
-                status: body.paymentMethod === PaymentMethod.ONLINE
-                    ? OrderStatus.PENDING_PAYMENT
-                    : OrderStatus.PLACED,
+                status: body.paymentMethod === PaymentMethod.ONLINE ? OrderStatus.PENDING_PAYMENT : OrderStatus.PLACED,
                 subtotal,
                 deliveryFee: branch.deliveryFee,
                 serviceFee: SERVICE_FEE_MINOR,
                 total,
                 currency: branch.currency as Currency,
                 paymentMethod: body.paymentMethod,
-            };
-
-            order = await createOrder(orderInput, trx);
+            }, trx);
 
             items = await bulkInsertItems(
-                lines.map((line) => ({
+                orderLineDrafts.map((l) => ({
                     region: resolvedRegion,
                     orderId: order.id,
-                    productId: line.productId,
-                    quantity: line.quantity,
-                    unitPriceSnapshot: line.unitPrice,
-                    nameSnapshot: line.name,
-                    imageUrlSnapshot: line.imageUrl,
-                    lineTotal: line.lineTotal,
+                    productId: l.productId,
+                    quantity: l.quantity,
+                    unitPriceSnapshot: l.unitPrice,
+                    nameSnapshot: l.name,
+                    imageUrlSnapshot: l.imageUrl,
+                    lineTotal: l.lineTotal,
                 })),
                 trx,
             );
 
-            // online orders are placed later
-            // event is set in outbox table and then the event is consumed by the background worker
+            // Transactional outbox — only COD lands as `placed` here.
+            // ONLINE orders start as `pending_payment` and emit `order.placed`
+            // from the Kashier webhook after capture (see kashier-webhook.service.ts).
             if (order.status === OrderStatus.PLACED) {
                 await insertOutboxEvent(trx, {
                     aggregateType: "order",
@@ -180,109 +172,90 @@ export class OrderService {
             await trx.commit();
         } catch (err) {
             await trx.rollback();
-            await this.releaseStock(body.branchId, body.items, publicId, correlationId);
+            await this.releaseStockSafe(body.branchId, body.items, publicId, correlationId);
             throw err;
         }
 
-        // Online orders: the checkout session is minted inline so the client
-        // gets the redirectUrl with the order. A provider failure does NOT
-        // void the order (docs/business-logic/orders.md §2) — it stays
-        // pending_payment and the client retries POST /payments/init. A
-        // background sweep cancels pending_payment orders older than
-        // PAYMENT_SESSION_TIMEOUT_MIN (app/order/jobs.ts).
-        let payment: OrderResponsePaymentInfo | undefined;
+        // 7. Online → init Kashier session. Rollback on failure (void order +
+        // release stock) so the customer is never stranded.
+        let paymentInfo;
         if (body.paymentMethod === PaymentMethod.ONLINE) {
             try {
-                const {dto} = await this.paymentService.initOnlinePayment(order);
-                payment = {
-                    sessionId: dto.sessionId,
-                    providerSessionId: dto.providerSessionId,
-                    redirectUrl: dto.redirectUrl,
-                    expiresAt: dto.expiresAt,
+                const result = await this.paymentService.initOnlinePayment(order);
+                paymentInfo = {
+                    sessionId: result.dto.sessionId,
+                    providerSessionId: result.dto.providerSessionId,
+                    redirectUrl: result.dto.redirectUrl,
+                    expiresAt: result.dto.expiresAt,
                 };
             } catch (err) {
-                logger.warn("payment init failed; order stays pending_payment until sweep or retry", {
-                    publicId: order.publicId,
-                    error: (err as Error).message,
-                });
+                logger.warn("payment init failed; voiding order", {publicId: order.publicId, error: (err as Error).message});
+                await this.voidOrderSafe(resolvedRegion, order.publicId);
+                await this.releaseStockSafe(body.branchId, body.items, order.publicId, correlationId);
+                throw err;
             }
         }
 
-        await this.clearBranchOrdersCache(resolvedRegion, branch.id);
+        // 8. Cache + WS
+        await this.invalidateBranchOrdersCache(resolvedRegion, branch.id);
         if (body.paymentMethod === PaymentMethod.COD) {
-            this.io.to(`branch:${branch.id}`).emit("order.created", OrderSummaryResponseDTO.from(order, items.length));
+            this.io
+                .to(`branch:${branch.id}`)
+                .emit("order.created", OrderSummaryResponseDTO.from(order, items.length));
         }
 
-        return OrderResponseDTO.from(order, items, payment);
-    };
+        return OrderResponseDTO.from(order, items, paymentInfo);
+    }
 
-    getOrder = async (actor: ActorContext, region: string, publicId: string): Promise<OrderDetailResponseDTO> => {
+    private async voidOrderSafe(region: string, publicId: string): Promise<void> {
+        try {
+            const trx = await db(region).transaction();
+            try {
+                await updateOrderStatus(publicId, OrderStatus.CANCELLED, "cancelled_at", trx);
+                await trx.commit();
+            } catch (e) {
+                await trx.rollback();
+                throw e;
+            }
+        } catch (err) {
+            logger.error("voidOrderSafe failed (order remains in pending_payment)", {publicId, error: (err as Error).message});
+        }
+    }
+
+    async getOrder(actor: ActorContext, region: string, publicId: string): Promise<OrderDetailResponseDTO> {
         const conn = db(region);
         const order = await findOrderByPublicId(publicId, conn);
         if (!order) throw OrderNotFoundError;
 
         this.assertReadAccess(actor, order);
 
-        const [items, transactions] = await Promise.all([
-            findItemsByOrderIds([order.id], conn),
-            findTransactionsByOrderIds([order.id], conn),
-        ]);
+        const items = await findItemsByOrderIds([order.id], conn);
+        return OrderDetailResponseDTO.from(order, items);
+    }
 
-        const paymentSummary = this.buildPaymentSummary(order, transactions);
-        return OrderDetailResponseDTO.fromDetail(order, items, paymentSummary);
-    };
-
-    private buildPaymentSummary = (order: OrderEntity, transactions: TransactionEntity[]): OrderPaymentSummary => {
-        const chargeTx = transactions.find((t) => t.transactionType === TransactionType.CHARGE);
-        const refundTxs = transactions.filter(
-            (t) => t.transactionType === TransactionType.REFUND && t.status === TransactionStatus.SUCCEEDED,
-        );
-        const refundedAmount = refundTxs.reduce((acc, t) => acc + t.amount, 0);
-
-        let status: "pending" | "authorized" | "captured" | "failed" | "refunded" = "pending";
-        if (order.paymentMethod === PaymentMethod.COD) {
-            status = order.status === OrderStatus.DELIVERED ? "captured" : "pending";
-        } else if (chargeTx) {
-            if (chargeTx.isRefunded || (chargeTx.amount > 0 && refundedAmount >= chargeTx.amount)) {
-                status = "refunded";
-            } else if (chargeTx.status === TransactionStatus.SUCCEEDED) {
-                status = "captured";
-            } else if (chargeTx.status === TransactionStatus.FAILED) {
-                status = "failed";
-            } else {
-                status = "pending";
-            }
-        }
-
-        return {
-            method: order.paymentMethod,
-            status,
-            amount: chargeTx ? chargeTx.amount : order.total,
-            currency: order.currency,
-            refundedAmount,
-        };
-    };
-
-    listCustomerOrders = async (actor: ActorContext, region: string, year: number, pagination: PaginationParams) => {
+    async listCustomerOrders(actor: ActorContext, region: string, year: number, pagination: PaginationParams) {
+        const yearStart = new Date(Date.UTC(year, 0, 1));
+        const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
         const conn = db(region);
-        const result = await findOrdersByCustomer(
-            {
-                customerId: actor.userId,
-                yearStart: new Date(Date.UTC(year, 0, 1)),
-                yearEnd: new Date(Date.UTC(year + 1, 0, 1)),
-            },
-            pagination,
-            conn,
-        );
-        const counts = await countItemsByOrderIds(result.data.map((order) => order.id), conn);
-
+        const result = await findOrdersByCustomer({customerId: actor.userId, yearStart, yearEnd}, pagination, conn);
+        const counts = await countItemsByOrderIds(result.data.map((o) => o.id), conn);
         return {
-            data: result.data.map((order) => OrderSummaryResponseDTO.from(order, counts.get(order.id) ?? 0)),
+            data: result.data.map((o) => OrderSummaryResponseDTO.from(o, counts.get(o.id) ?? 0)),
             meta: result.meta,
         };
-    };
+    }
 
-    listRestaurantOrders = async (region: string, restaurantId: number, branchId: number, status: OrderStatus | undefined, from: Date | undefined, to: Date | undefined, filters: FilterParams[], pagination: PaginationParams) => {
+    async listRestaurantOrders(
+        _actor: ActorContext,
+        region: string,
+        restaurantId: number,
+        branchId: number,
+        status: OrderStatus | undefined,
+        from: Date | undefined,
+        to: Date | undefined,
+        filters: FilterParams[],
+        pagination: PaginationParams,
+    ) {
         const conn = db(region);
         const result = await findOrdersByRestaurantBranch(
             {restaurantId, branchId, status, from, to},
@@ -290,15 +263,14 @@ export class OrderService {
             filters,
             conn,
         );
-        const counts = await countItemsByOrderIds(result.data.map((order) => order.id), conn);
-
+        const counts = await countItemsByOrderIds(result.data.map((o) => o.id), conn);
         return {
-            data: result.data.map((order) => OrderSummaryResponseDTO.from(order, counts.get(order.id) ?? 0)),
+            data: result.data.map((o) => OrderSummaryResponseDTO.from(o, counts.get(o.id) ?? 0)),
             meta: result.meta,
         };
-    };
+    }
 
-    updateStatus = async (actor: ActorContext, region: string, publicId: string, body: UpdateOrderStatusRequestDTO): Promise<OrderStatusResponseDTO> => {
+    async updateStatus(actor: ActorContext, region: string, publicId: string, body: UpdateOrderStatusRequestDTO): Promise<OrderStatusResponseDTO> {
         const conn = db(region);
         const order = await findOrderByPublicId(publicId, conn);
         if (!order) throw OrderNotFoundError;
@@ -316,6 +288,9 @@ export class OrderService {
         try {
             updated = await updateOrderStatus(order.publicId, body.status, stamp, trx);
 
+            // Transactional outbox — pick the matching event type for the
+            // new status. Same trx as the status update so we can't publish
+            // a state we then roll back.
             const eventType = OUTBOX_EVENT_FOR_STATUS[body.status];
             if (eventType) {
                 await insertOutboxEvent(trx, {
@@ -332,112 +307,113 @@ export class OrderService {
             throw err;
         }
 
-        await this.clearBranchOrdersCache(region, order.branchId);
+        await this.invalidateBranchOrdersCache(region, order.branchId);
 
         const payload = OrderStatusResponseDTO.from(updated);
         this.io.to(`customer:${updated.customerId}`).emit("order.status_changed", payload);
         this.io.to(`branch:${updated.branchId}`).emit("order.status_changed", payload);
 
         return payload;
-    };
+    }
 
-    private buildOrderLines = (requested: Array<{productId: number; quantity: number}>, products: CoreBranchProduct[]): OrderLineDraft[] => {
-        const byProduct = new Map(products.map((product) => [Number(product.productId), product]));
-        const unavailable: UnavailableItem[] = [];
-        const lines: OrderLineDraft[] = [];
+    // ── private helpers ──────────────────────────────────────────────────
+    private buildOrderLineDrafts(
+        requested: Array<{productId: number; quantity: number}>,
+        products: CoreBranchProduct[],
+    ): OrderLineDraft[] {
+        const byProduct = new Map<number, CoreBranchProduct>();
+        for (const p of products) byProduct.set(Number(p.productId), p);
 
-        for (const item of requested) {
-            const product = byProduct.get(item.productId);
+        const unavailableItems: UnavailableItem[] = [];
+        const drafts: OrderLineDraft[] = [];
 
-            if (!product || !product.isAvailable) {
-                unavailable.push({productId: item.productId, requested: item.quantity, available: 0});
+        for (const it of requested) {
+            const p = byProduct.get(it.productId);
+            if (!p || !p.isAvailable) {
+                unavailableItems.push({productId: it.productId, requested: it.quantity, available: 0});
                 continue;
             }
-            if (product.stock < item.quantity) {
-                unavailable.push({productId: item.productId, requested: item.quantity, available: product.stock});
+            if (p.stock < it.quantity) {
+                unavailableItems.push({productId: it.productId, requested: it.quantity, available: p.stock});
                 continue;
             }
-
-            lines.push({
-                productId: item.productId,
-                quantity: item.quantity,
-                unitPrice: product.price,
-                lineTotal: multiplyMinor(product.price, item.quantity),
-                name: product.name,
-                imageUrl: product.imageUrl,
+            drafts.push({
+                productId: it.productId,
+                quantity: it.quantity,
+                unitPrice: p.price,
+                lineTotal: multiplyMinor(p.price, it.quantity),
+                name: p.name,
+                imageUrl: p.imageUrl,
             });
         }
+        if (unavailableItems.length > 0) throw outOfStockError(unavailableItems);
+        return drafts;
+    }
 
-        if (unavailable.length > 0) throw outOfStockError(unavailable);
-        return lines;
-    };
-
-    private releaseStock = async (
+    private async releaseStockSafe(
         branchId: number,
         items: Array<{productId: number; quantity: number}>,
         idempotencyKey: string,
         correlationId?: string,
-    ) => {
+    ): Promise<void> {
         try {
             await coreReleaseStock(branchId, items, idempotencyKey, correlationId);
         } catch (err) {
-            logger.error("stock release failed after order rollback", {
+            // Log loudly but do not mask the original error; release-stock failure
+            // is observability/alerting territory, not a customer-facing error.
+            logger.error("releaseStock failed after order placement rollback", {
                 branchId,
                 error: (err as Error).message,
             });
         }
-    };
+    }
 
-    private clearBranchOrdersCache = async (region: string, branchId: number) => {
-        // Matches withCache keys for GET /api/restaurants/:rId/branches/:bId/orders*
-        // across restaurant ids and query-string variants (status/filters/cursor).
-        const pattern = `${region}:GET:/api/restaurants/*/branches/${branchId}/orders*`;
-        await this.cache
-            .delByPattern(pattern)
-            .catch((err) =>
-                logger.warn("branch orders cache invalidation failed", {
-                    region,
-                    branchId,
-                    error: (err as Error).message,
-                }),
-            );
-    };
-
-    private assertReadAccess = (actor: ActorContext, order: OrderEntity) => {
+    private assertReadAccess(actor: ActorContext, order: OrderEntity) {
         if (actor.role === "system_admin") return;
         if (Number(actor.userId) === Number(order.customerId)) return;
 
         if (actor.role === "restaurant_user") {
             if (Number(actor.restaurantId) !== Number(order.restaurantId)) throw UnAuthorisedError;
             if (actor.restaurantRole === "owner") return;
-            if ((actor.branchIds ?? []).includes(Number(order.branchId))) return;
+            const branchIds = actor.branchIds ?? [];
+            if (branchIds.includes(Number(order.branchId))) return;
         }
-
         throw UnAuthorisedError;
-    };
+    }
 
-    private resolveStatusActor = (actor: ActorContext, order: OrderEntity): StatusActor => {
+    private resolveStatusActor(actor: ActorContext, order: OrderEntity): StatusActor {
         if (actor.role === "system_admin") return StatusActor.ADMIN;
-        if (actor.role === "delivery_agent" && Number(actor.userId) === Number(order.deliveryAgentId)) {
-            return StatusActor.AGENT;
-        }
-
+        if (actor.role === "delivery_agent" && Number(actor.userId) === Number(order.deliveryAgentId)) return StatusActor.AGENT;
         if (actor.role === "restaurant_user") {
             if (Number(actor.restaurantId) !== Number(order.restaurantId)) throw UnAuthorisedError;
-            if (
-                actor.restaurantRole !== "owner" &&
-                !(actor.branchIds ?? []).includes(Number(order.branchId))
-            ) {
-                throw UnAuthorisedError;
+            if (actor.restaurantRole !== "owner") {
+                const branchIds = actor.branchIds ?? [];
+                if (!branchIds.includes(Number(order.branchId))) throw UnAuthorisedError;
             }
             return StatusActor.RESTAURANT_MEMBER;
         }
-
         if (Number(actor.userId) === Number(order.customerId)) return StatusActor.CUSTOMER;
         throw UnAuthorisedError;
-    };
+    }
+
+    private async invalidateBranchOrdersCache(region: string, branchId: number) {
+        try {
+            await this.cache.del(RESTAURANT_ORDERS_CACHE_PREFIX(region, branchId));
+        } catch {}
+    }
 }
 
+// ─── Outbox payload builders ─────────────────────────────────────────────────
+// Kept as module-level helpers (not class methods) so they're easy to unit-test
+// in isolation and don't drag a `this` context into the trx callback.
+
+const OUTBOX_EVENT_FOR_STATUS: Partial<Record<OrderStatus, string>> = {
+    [OrderStatus.ACCEPTED]: EVENT_TYPES.ORDER_ACCEPTED,
+    [OrderStatus.REJECTED]: EVENT_TYPES.ORDER_REJECTED,
+    [OrderStatus.CANCELLED]: EVENT_TYPES.ORDER_CANCELLED,
+};
+
+/** Matches analytics-service contract (docs/api-contracts.md — order.placed payload). */
 function buildOrderPlacedPayload(order: OrderEntity, items: OrderItemEntity[]) {
     return {
         orderId: order.publicId,
@@ -453,11 +429,11 @@ function buildOrderPlacedPayload(order: OrderEntity, items: OrderItemEntity[]) {
         serviceFee: order.serviceFee,
         total: order.total,
         currency: order.currency,
-        items: items.map((item) => ({
-            productId: Number(item.productId),
-            quantity: item.quantity,
-            unitPrice: item.unitPriceSnapshot,
-            lineTotal: item.lineTotal,
+        items: items.map((i) => ({
+            productId: Number(i.productId),
+            quantity: i.quantity,
+            unitPrice: i.unitPriceSnapshot,
+            lineTotal: i.lineTotal,
         })),
         placedAt: order.createdAt.toISOString(),
     };

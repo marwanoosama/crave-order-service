@@ -1,0 +1,15 @@
+meta {
+  name: RBAC permissions by role
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{coreBase}}/internal/rbac/permissions?role=staff
+  body: none
+  auth: none
+}
+
+headers {
+  api-key: dev-internal-api-key
+}

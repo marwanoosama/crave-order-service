@@ -2,13 +2,23 @@ import {db} from "../knex/knex";
 import {env} from "../config/env";
 import {logger} from "../logger/logger";
 import {messageBroker} from "../messaging/init";
-import {markOutboxEventDispatched, markOutboxEventFailed, retireDeadOutboxEvents, takePendingOutboxEvents} from "./outbox.repo";
+import {claimBatch, markDispatched, markFailed} from "./outbox.repo";
 
-export async function publishPendingOutboxEvents(region: string): Promise<void> {
+/**
+ * One pass over a single region's outbox: claim a batch with FOR UPDATE
+ * SKIP LOCKED, publish each row to the order.events exchange, mark dispatched.
+ *
+ * A publish failure marks the row as failed, bumps attempts, and bails out of
+ * the batch (the broker is probably sick — don't hold the lock on the rest).
+ *
+ * SKIP LOCKED makes this safe to run concurrently across multiple workers in
+ * the same region.
+ */
+export async function drainOutboxForRegion(region: string): Promise<void> {
     const conn = db(region);
     const trx = await conn.transaction();
     try {
-        const rows = await takePendingOutboxEvents(trx, env.outboundEvents.batchSize);
+        const rows = await claimBatch(trx, env.outboundEvents.batchSize);
         if (rows.length === 0) {
             await trx.commit();
             return;
@@ -30,24 +40,23 @@ export async function publishPendingOutboxEvents(region: string): Promise<void> 
                     row.event_type,
                     Buffer.from(JSON.stringify(envelope), "utf8"),
                 );
-                await markOutboxEventDispatched(trx, row.id);
+                await markDispatched(trx, row.id);
             } catch (err) {
-                const errorText = errorMessage(err);
-                await markOutboxEventFailed(trx, row.id, errorText);
-                logger.error("outbox publish failed", {region, id: row.id, error: errorText});
+                const msg = describeError(err);
+                await markFailed(trx, row.id, msg);
+                logger.error("outbox publish failed", {region, id: row.id, error: msg});
                 break;
             }
         }
 
         await trx.commit();
-        await retireDeadOutboxEvents(conn);
     } catch (err) {
         await trx.rollback();
         throw err;
     }
 }
 
-function errorMessage(err: unknown): string {
+function describeError(err: unknown): string {
     if (err instanceof Error && err.message) return err.message;
     try {
         return JSON.stringify(err);

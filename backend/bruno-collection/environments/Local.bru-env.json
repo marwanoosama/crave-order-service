@@ -1,0 +1,138 @@
+{
+  "name": "Local",
+  "variables": [
+    {
+      "name": "region",
+      "type": "text",
+      "value": "eg",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "coreBase",
+      "type": "text",
+      "value": "http://localhost:3000/api",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "orderBase",
+      "type": "text",
+      "value": "http://localhost:4000/api",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "orderId",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "onlineOrderId",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "adminToken",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "adminRefresh",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "ownerToken",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "ownerRefresh",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "owner2Token",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "owner2Refresh",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "managerToken",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "managerRefresh",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "staffToken",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "staffRefresh",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "customerToken",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "customerRefresh",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "agentToken",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    },
+    {
+      "name": "agentRefresh",
+      "type": "text",
+      "value": "",
+      "enabled": true,
+      "localValue": null
+    }
+  ]
+}

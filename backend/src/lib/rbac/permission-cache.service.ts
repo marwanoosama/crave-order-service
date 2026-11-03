@@ -3,8 +3,18 @@ import {toMs} from "../../pkg/utils/time";
 import {logger} from "../logger/logger";
 import {getPermissionsByRole} from "../core-client/rbac.client";
 
+// Trivial inbound shape — kept inline because this is the only consumer.
+// (Module-specific event payloads live under their owning module.)
 type RbacPermissionsChangedPayload = {role?: string};
 
+/**
+ * In-process cache of permissions per restaurantRole. Source is core-service's
+ * `GET /api/internal/rbac/permissions?role=...` (HTTP, via core-client).
+ *
+ * Mirrors core-service's `PermissionCacheService` (Map + TTL). Invalidation on
+ * `rbac.permissions_changed` events clears the entry so the next request
+ * re-fetches.
+ */
 @injectable()
 export class PermissionCacheService {
     private cache: Map<string, {permissions: string[]; cachedAt: number}> = new Map();
@@ -24,12 +34,17 @@ export class PermissionCacheService {
         return permissions.includes(`${resource}:${action}`);
     };
 
-    // Event "rbac.permissions_changed": drop one role's permissions or the whole cache.
+    invalidate = (roleName?: string): void => {
+        if (roleName) this.cache.delete(roleName);
+        else this.cache.clear();
+    };
+
+    /**
+     * Thin handler entry point — wired into the core-events consumer registry.
+     */
     handlePermissionsChanged = async (payload: unknown): Promise<void> => {
         const p = payload as RbacPermissionsChangedPayload | undefined;
-        if (p?.role) this.cache.delete(p.role);
-        else this.cache.clear();
-
+        this.invalidate(p?.role);
         logger.info("rbac.permissions_changed -> permission cache cleared", {role: p?.role ?? "*"});
     };
 }

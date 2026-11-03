@@ -21,6 +21,10 @@ export enum Currency {
     SAR = "SAR",
 }
 
+/**
+ * Roles allowed to drive a status transition. Resolved from JWT + endpoint.
+ * Kept narrow on purpose — restaurant_member covers owner / branch_manager / staff.
+ */
 export enum StatusActor {
     CUSTOMER = "customer",
     RESTAURANT_MEMBER = "restaurant_member",

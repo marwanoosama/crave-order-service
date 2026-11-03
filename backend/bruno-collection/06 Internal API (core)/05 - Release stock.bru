@@ -1,0 +1,27 @@
+meta {
+  name: Release stock
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{coreBase}}/internal/branches/1/release-stock
+  body: json
+  auth: none
+}
+
+headers {
+  api-key: dev-internal-api-key
+}
+
+body:json {
+  {
+    "items": [
+      {
+        "productId": 1,
+        "quantity": 1
+      }
+    ],
+    "reservationId": 1
+  }
+}

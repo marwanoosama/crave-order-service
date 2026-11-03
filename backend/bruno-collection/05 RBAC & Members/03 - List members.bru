@@ -1,0 +1,15 @@
+meta {
+  name: List members
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{coreBase}}/restaurants/1/members
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{ownerToken}}
+}

@@ -1,0 +1,23 @@
+meta {
+  name: Status (picked/delivered)
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{orderBase}}/agents/orders/{{orderId}}/status
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{agentToken}}
+  X-Region: {{region}}
+  Idempotency-Key: brave-agent-status-1
+}
+
+body:json {
+  {
+    "status": "picked"
+  }
+}

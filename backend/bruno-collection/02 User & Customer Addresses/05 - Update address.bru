@@ -1,0 +1,21 @@
+meta {
+  name: Update address
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{coreBase}}/customer/addresses/1
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{customerToken}}
+}
+
+body:json {
+  {
+    "label": "Home (renamed)"
+  }
+}

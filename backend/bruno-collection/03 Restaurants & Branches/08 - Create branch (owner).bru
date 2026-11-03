@@ -1,0 +1,28 @@
+meta {
+  name: Create branch (owner)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{coreBase}}/restaurants/1/branches
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{ownerToken}}
+}
+
+body:json {
+  {
+    "countryCode": "eg",
+    "addressText": "9 Hassan Sabry St, Zamalek",
+    "label": "Zamalek",
+    "lat": 30.0601,
+    "lng": 31.2197,
+    "opensAt": "10:00",
+    "closesAt": "23:00",
+    "acceptOrders": true
+  }
+}

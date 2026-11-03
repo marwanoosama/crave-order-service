@@ -1,0 +1,16 @@
+meta {
+  name: My tasks
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{orderBase}}/agents/tasks
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{agentToken}}
+  X-Region: {{region}}
+}

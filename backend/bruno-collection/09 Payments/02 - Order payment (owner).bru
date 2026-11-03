@@ -1,0 +1,16 @@
+meta {
+  name: Order payment (owner)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{orderBase}}/restaurants/1/payments/1
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{ownerToken}}
+  X-Region: {{region}}
+}

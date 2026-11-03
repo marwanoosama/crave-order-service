@@ -1,15 +1,20 @@
-
+/**
+ * Kashier-specific request / response shapes (verbatim names per
+ * https://developers.kashier.io/payment/payment-sessions ).
+ *
+ * Only the fields we actually send / consume.
+ */
 
 export interface KashierCreateSessionRequest {
     merchantId: string;
-    paymentType: string;          
-    amount: string;               
-    currency: string;             
-    order: string;                
+    paymentType: string;          // e.g. "credit"
+    amount: string;               // major units, "18.40"
+    currency: string;             // "EGP"
+    order: string;                // merchant order ref (we pass our publicId)
     type: "one-time";
-    allowedMethods: string;
+    allowedMethods: string;       // "card,wallet"
     enable3DS: boolean;
-    serverWebhook?: string;
+    serverWebhook: string;
     merchantRedirect?: string;
     failureRedirect?: boolean;
     description?: string;
@@ -33,7 +38,7 @@ export interface KashierCreateSessionResponse {
     [k: string]: unknown;
 }
 
-
+/** Inbound webhook envelope fields we care about. */
 export interface KashierWebhookEnvelope {
     event: "pay" | "refund" | "authorize" | "void" | "capture";
     data: KashierWebhookData;
@@ -44,11 +49,11 @@ export interface KashierWebhookData {
     kashierOrderId: string;
     orderReference?: string;
     transactionId: string;
-    status: "SUCCESS" | "FAILED" | "PENDING";
+    status: "SUCCESS" | "FAILED";
     method?: string;
     amount: number;
     currency: string;
-    
+    /** alphabetically-sorted list of fields used to compute the signature */
     signatureKeys: string[];
     [k: string]: unknown;
 }

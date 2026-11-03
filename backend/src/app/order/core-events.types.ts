@@ -27,6 +27,4 @@ export interface BranchEventPayload {
 
 export interface RestaurantSuspendedPayload {
     restaurantId: number;
-    /** Branches of the suspended restaurant (emitted by core) — all get evicted. */
-    branchIds?: number[];
 }

@@ -1,0 +1,24 @@
+meta {
+  name: Create product (owner)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{coreBase}}/restaurants/1/products
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{ownerToken}}
+}
+
+body:json {
+  {
+    "name": "Bruno Burger",
+    "description": "Smoke test burger",
+    "price": 75,
+    "imageUrl": "https://cdn.crave.io/p/bruno.png"
+  }
+}

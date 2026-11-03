@@ -11,15 +11,10 @@ import {findOrderByPublicId, updateOrderStatus} from "../../order/repository/ord
 import {findItemsByOrderIds} from "../../order/repository/order-item.repo";
 import {OrderSummaryResponseDTO, OrderStatusResponseDTO} from "../../order/dto/order.response.dto";
 import {
-    findLatestSessionByOrderId,
+    findActiveSessionByOrderId,
     updateSession,
 } from "../repository/payment-session.repo";
-import {
-    createTransaction,
-    findLatestRefundByOrderId,
-    findTransactionsByOrderIds,
-    updateTransaction,
-} from "../repository/transaction.repo";
+import {createTransaction} from "../repository/transaction.repo";
 import {recordWebhookOrSkip, markWebhookProcessed} from "../repository/payment-webhook-event.repo";
 import {
     PaymentSessionStatus,
@@ -89,11 +84,8 @@ export class KashierWebhookService {
     }
 
     private async reconcile(envelope: KashierWebhookEnvelope, region: string): Promise<void> {
-        if (envelope.event === "refund") {
-            await this.reconcileRefund(envelope, region);
-            return;
-        }
-
+        // We only handle 'pay' events in Phase 2. 'refund' is student homework;
+        // 'authorize' / 'void' / 'capture' are out of scope today.
         if (envelope.event !== "pay") {
             logger.info("kashier webhook event ignored", {event: envelope.event});
             return;
@@ -106,31 +98,12 @@ export class KashierWebhookService {
             return;
         }
 
-        // Money can arrive late (slow checkout, third-party capture): after
-        // this log support must reconcile manually against the transaction
-        // ledger — nothing is silently dropped.
-        if (
-            envelope.data.status === "SUCCESS" &&
-            order.status !== OrderStatus.PENDING_PAYMENT &&
-            order.status !== OrderStatus.PLACED
-        ) {
-            logger.warn("kashier capture for order in unexpected state — needs manual review", {
-                merchantOrderId: envelope.data.merchantOrderId,
-                orderStatus: order.status,
-                transactionId: envelope.data.transactionId,
-                amount: sessionAmountNote(envelope),
-            });
-        }
-
         // The webhook's `kashierOrderId` is a transaction-level Kashier id, NOT
         // the session `_id` we stored as `provider_session_id`. So we resolve
-        // the session via the order: latest session for this order. A session
-        // stays payable within its expireAt even after a FAILED attempt
-        // (Kashier maxFailureAttempts), so "latest regardless of status" is
-        // what a SUCCESS must reconcile against.
-        const session = await findLatestSessionByOrderId(order.id, conn);
+        // the session via the order: latest active session for this order.
+        const session = await findActiveSessionByOrderId(order.id, conn);
         if (!session) {
-            logger.warn("kashier webhook with no session for order", {
+            logger.warn("kashier webhook with no active session for order", {
                 merchantOrderId: envelope.data.merchantOrderId,
                 kashierOrderId: envelope.data.kashierOrderId,
             });
@@ -139,19 +112,6 @@ export class KashierWebhookService {
 
         const trx = await conn.transaction();
         try {
-            // Transaction still in flight at the provider (e.g. wallet
-            // confirmation). Nothing mutated yet — ack the webhook.
-            if (envelope.data.status === "PENDING") {
-                await trx.rollback();
-                if (session.status === PaymentSessionStatus.INITIALIZED) {
-                    await updateSession(session.id, {
-                        status: PaymentSessionStatus.PENDING,
-                        rawLastPayload: envelope,
-                    }, conn);
-                }
-                return;
-            }
-
             if (envelope.data.status === "SUCCESS") {
                 await updateSession(session.id, {
                     status: PaymentSessionStatus.CAPTURED,
@@ -284,105 +244,6 @@ export class KashierWebhookService {
             throw err;
         }
     }
-
-    private async reconcileRefund(envelope: KashierWebhookEnvelope, region: string): Promise<void> {
-        const conn = db(region);
-        const order = await findOrderByPublicId(envelope.data.merchantOrderId, conn);
-        if (!order) {
-            logger.warn("kashier refund webhook for unknown order", {
-                merchantOrderId: envelope.data.merchantOrderId,
-            });
-            return;
-        }
-
-        const trx = await conn.transaction();
-        try {
-            let refundTx = await findLatestRefundByOrderId(order.id, trx);
-            const orderTxs = await findTransactionsByOrderIds([order.id], trx);
-            const chargeTx = orderTxs.find(
-                (t) => t.transactionType === TransactionType.CHARGE && t.status === TransactionStatus.SUCCEEDED,
-            );
-
-            if (envelope.data.status === "SUCCESS") {
-                if (!refundTx) {
-                    refundTx = await createTransaction({
-                        region,
-                        orderId: order.id,
-                        transactionType: TransactionType.REFUND,
-                        method: TransactionMethod.ONLINE,
-                        providerId: KASHIER_PROVIDER_ID,
-                        providerReferenceId: envelope.data.transactionId,
-                        status: TransactionStatus.SUCCEEDED,
-                        amount: chargeTx ? chargeTx.amount : order.total,
-                        currency: order.currency,
-                        srcAccId: order.restaurantOwnerId,
-                        dstAccId: order.customerId,
-                        idempotencyKey: `kashier:refund:${envelope.data.transactionId}`,
-                    }, trx);
-                } else {
-                    await updateTransaction(refundTx.id, {
-                        status: TransactionStatus.SUCCEEDED,
-                        providerReferenceId: envelope.data.transactionId,
-                    }, trx);
-                }
-
-                if (chargeTx) {
-                    await updateTransaction(chargeTx.id, {
-                        isRefunded: true,
-                        refundedPaymentId: refundTx.id,
-                    }, trx);
-                }
-
-                await insertOutboxEvent(trx, {
-                    aggregateType: "payment",
-                    aggregateId: order.publicId,
-                    eventType: EVENT_TYPES.PAYMENT_REFUNDED,
-                    payload: {
-                        orderId: order.publicId,
-                        region,
-                        restaurantId: Number(order.restaurantId),
-                        branchId: Number(order.branchId),
-                        customerId: Number(order.customerId),
-                        provider: "kashier",
-                        providerReferenceId: envelope.data.transactionId,
-                        refundId: refundTx.id,
-                        amount: refundTx.amount,
-                        currency: refundTx.currency,
-                        refundedAt: new Date().toISOString(),
-                    },
-                });
-
-                await trx.commit();
-                return;
-            }
-
-            // Refund failed at provider
-            if (refundTx) {
-                await updateTransaction(refundTx.id, {
-                    status: TransactionStatus.FAILED,
-                    providerReferenceId: envelope.data.transactionId,
-                }, trx);
-            }
-
-            await insertOutboxEvent(trx, {
-                aggregateType: "payment",
-                aggregateId: order.publicId,
-                eventType: EVENT_TYPES.PAYMENT_REFUND_FAILED,
-                payload: {
-                    orderId: order.publicId,
-                    region,
-                    refundId: refundTx?.id ?? null,
-                    providerReferenceId: envelope.data.transactionId,
-                    occurredAt: new Date().toISOString(),
-                },
-            });
-
-            await trx.commit();
-        } catch (err) {
-            await trx.rollback();
-            throw err;
-        }
-    }
 }
 
 function parseEnvelope(rawBody: Buffer): KashierWebhookEnvelope {
@@ -396,8 +257,4 @@ function parseEnvelope(rawBody: Buffer): KashierWebhookEnvelope {
         throw MalformedWebhookError;
     }
     return parsed as KashierWebhookEnvelope;
-}
-
-function sessionAmountNote(envelope: KashierWebhookEnvelope): string {
-    return `${envelope.data.amount} ${envelope.data.currency}`;
 }

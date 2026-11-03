@@ -1,0 +1,15 @@
+meta {
+  name: Remove member
+  type: http
+  seq: 1
+}
+
+delete {
+  url: {{coreBase}}/restaurants/1/members/999
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{ownerToken}}
+}

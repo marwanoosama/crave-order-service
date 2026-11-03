@@ -1,0 +1,21 @@
+meta {
+  name: Restaurant status (admin)
+  type: http
+  seq: 1
+}
+
+patch {
+  url: {{coreBase}}/restaurants/1/status
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{adminToken}}
+}
+
+body:json {
+  {
+    "status": "active"
+  }
+}

@@ -1,0 +1,19 @@
+meta {
+  name: Accept invite (OTP from invite email)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{coreBase}}/auth/accept-invite
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "invited@crave.io",
+    "otp": "123456",
+    "newPassword": "Invited123!"
+  }
+}

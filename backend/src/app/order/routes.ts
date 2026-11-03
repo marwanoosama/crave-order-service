@@ -1,6 +1,6 @@
 import {Router} from "express";
 import {authenticate} from "../../lib/auth/guard";
-import {rbac, requireBranchAccess, requireRestaurantMember} from "../../lib/auth/rbac";
+import {rbac, requireRestaurantMember, requireBranchAccess} from "../../lib/auth/rbac";
 import {idempotency} from "../../lib/idempotency/idempotency";
 import {withCache} from "../../lib/cache/withCache";
 import {requireRegion} from "../../lib/sharding/region-resolver";
@@ -12,6 +12,7 @@ export const orderRouter = Router();
 
 const orderController = container.resolve<OrderController>(TOKENS.OrderController);
 
+// ── Customer-facing ─────────────────────────────────────────────────────
 orderRouter.post(
     "/orders",
     authenticate,
@@ -28,27 +29,13 @@ orderRouter.get(
 );
 
 orderRouter.get(
-    "/customer/orders/:publicId",
-    authenticate,
-    requireRegion,
-    orderController.getOrder,
-);
-
-orderRouter.get(
     "/customer/orders",
     authenticate,
     requireRegion,
     orderController.listCustomerOrders,
 );
 
-orderRouter.patch(
-    "/orders/:publicId/status",
-    authenticate,
-    requireRegion,
-    idempotency({strict: true}),
-    orderController.updateStatus,
-);
-
+// Customer-only cancel endpoint (status target is implicit: cancelled).
 orderRouter.patch(
     "/customer/orders/:publicId/status",
     authenticate,
@@ -57,16 +44,7 @@ orderRouter.patch(
     orderController.updateStatus,
 );
 
-orderRouter.get(
-    "/restaurant/orders",
-    authenticate,
-    requireRegion,
-    requireBranchAccess("branchId"),
-    rbac({resource: "orders", action: "read"}),
-    withCache(10),
-    orderController.listRestaurantOrders,
-);
-
+// ── Restaurant-facing (path-scoped so middleware can guard) ─────────────
 orderRouter.get(
     "/restaurants/:restaurantId/branches/:branchId/orders",
     authenticate,
@@ -78,6 +56,8 @@ orderRouter.get(
     orderController.listRestaurantOrders,
 );
 
+// Restaurant member status transitions (accept/reject/preparing/ready/cancelled).
+// The status machine + the rbac() middleware enforce per-target permissions.
 orderRouter.patch(
     "/restaurants/:restaurantId/branches/:branchId/orders/:publicId/status",
     authenticate,
@@ -88,6 +68,7 @@ orderRouter.patch(
     orderController.updateStatus,
 );
 
+// ── Admin override (any transition the matrix allows for `admin`) ───────
 orderRouter.patch(
     "/admin/orders/:publicId/status",
     authenticate,

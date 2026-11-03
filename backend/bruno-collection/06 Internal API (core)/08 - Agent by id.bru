@@ -1,0 +1,15 @@
+meta {
+  name: Agent by id
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{coreBase}}/user/internal/agents/12
+  body: none
+  auth: none
+}
+
+headers {
+  api-key: dev-internal-api-key
+}

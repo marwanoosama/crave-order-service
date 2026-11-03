@@ -11,14 +11,14 @@ export class OrderItemResponseDTO {
     lineTotal!: number;
 
     static from(item: OrderItemEntity): OrderItemResponseDTO {
-        return Object.assign(new OrderItemResponseDTO(), {
-            productId: item.productId,
-            name: item.nameSnapshot,
-            imageUrl: item.imageUrlSnapshot,
-            quantity: item.quantity,
-            unitPrice: item.unitPriceSnapshot,
-            lineTotal: item.lineTotal,
-        });
+        const dto = new OrderItemResponseDTO();
+        dto.productId = item.productId;
+        dto.name = item.nameSnapshot;
+        dto.imageUrl = item.imageUrlSnapshot;
+        dto.quantity = item.quantity;
+        dto.unitPrice = item.unitPriceSnapshot;
+        dto.lineTotal = item.lineTotal;
+        return dto;
     }
 }
 
@@ -45,31 +45,27 @@ export class OrderResponseDTO {
     createdAt!: string;
     payment?: OrderResponsePaymentInfo;
 
-    static from(
-        order: OrderEntity,
-        items: OrderItemEntity[],
-        payment?: OrderResponsePaymentInfo,
-    ): OrderResponseDTO {
-        return Object.assign(new OrderResponseDTO(), {
-            publicId: order.publicId,
-            status: order.status,
-            paymentMethod: order.paymentMethod,
-            branch: {id: Number(order.branchId)},
-            restaurant: {id: Number(order.restaurantId)},
-            customerAddress: {
-                lat: Number(order.deliveryLat),
-                lng: Number(order.deliveryLng),
-                addressText: order.deliveryAddressTextSnapshot,
-            },
-            subtotal: order.subtotal,
-            deliveryFee: order.deliveryFee,
-            serviceFee: order.serviceFee,
-            total: order.total,
-            currency: order.currency,
-            items: items.map(OrderItemResponseDTO.from),
-            createdAt: order.createdAt.toISOString(),
-            ...(payment ? {payment} : {}),
-        });
+    static from(order: OrderEntity, items: OrderItemEntity[], payment?: OrderResponsePaymentInfo): OrderResponseDTO {
+        const dto = new OrderResponseDTO();
+        dto.publicId = order.publicId;
+        dto.status = order.status;
+        dto.paymentMethod = order.paymentMethod;
+        dto.branch = {id: Number(order.branchId)};
+        dto.restaurant = {id: Number(order.restaurantId)};
+        dto.customerAddress = {
+            lat: Number(order.deliveryLat),
+            lng: Number(order.deliveryLng),
+            addressText: order.deliveryAddressTextSnapshot,
+        };
+        dto.subtotal = order.subtotal;
+        dto.deliveryFee = order.deliveryFee;
+        dto.serviceFee = order.serviceFee;
+        dto.total = order.total;
+        dto.currency = order.currency;
+        dto.items = items.map(OrderItemResponseDTO.from);
+        dto.createdAt = order.createdAt.toISOString();
+        if (payment) dto.payment = payment;
+        return dto;
     }
 }
 
@@ -84,16 +80,16 @@ export class OrderSummaryResponseDTO {
     createdAt!: string;
 
     static from(order: OrderEntity, itemsCount: number): OrderSummaryResponseDTO {
-        return Object.assign(new OrderSummaryResponseDTO(), {
-            publicId: order.publicId,
-            status: order.status,
-            total: order.total,
-            currency: order.currency,
-            itemsCount,
-            restaurant: {id: Number(order.restaurantId)},
-            branchId: Number(order.branchId),
-            createdAt: order.createdAt.toISOString(),
-        });
+        const dto = new OrderSummaryResponseDTO();
+        dto.publicId = order.publicId;
+        dto.status = order.status;
+        dto.total = order.total;
+        dto.currency = order.currency;
+        dto.itemsCount = itemsCount;
+        dto.restaurant = {id: Number(order.restaurantId)};
+        dto.branchId = Number(order.branchId);
+        dto.createdAt = order.createdAt.toISOString();
+        return dto;
     }
 }
 
@@ -103,60 +99,58 @@ export class OrderStatusResponseDTO {
     updatedAt!: string;
 
     static from(order: OrderEntity): OrderStatusResponseDTO {
-        return Object.assign(new OrderStatusResponseDTO(), {
-            publicId: order.publicId,
-            status: order.status,
-            updatedAt: order.updatedAt.toISOString(),
-        });
+        const dto = new OrderStatusResponseDTO();
+        dto.publicId = order.publicId;
+        dto.status = order.status;
+        dto.updatedAt = order.updatedAt.toISOString();
+        return dto;
     }
 }
 
-export interface OrderPaymentSummary {
-    method: "online" | "cod";
-    status: "pending" | "authorized" | "captured" | "failed" | "refunded";
-    amount: number;
-    currency: string;
-    refundedAmount: number;
-}
-
-export class OrderDetailResponseDTO extends OrderResponseDTO {
-    paymentSummary?: OrderPaymentSummary;
+export class OrderDetailResponseDTO {
+    publicId!: string;
+    status!: OrderStatus;
+    paymentMethod!: PaymentMethod;
+    branch!: {id: number};
+    restaurant!: {id: number};
+    customerAddress!: {lat: number; lng: number; addressText: string};
+    subtotal!: number;
+    deliveryFee!: number;
+    serviceFee!: number;
+    total!: number;
+    currency!: string;
+    items!: OrderItemResponseDTO[];
+    createdAt!: string;
     history!: Array<{status: OrderStatus; ts: string}>;
 
-    static fromDetail(
-        order: OrderEntity,
-        items: OrderItemEntity[],
-        paymentSummary?: OrderPaymentSummary,
-    ): OrderDetailResponseDTO {
-        return Object.assign(new OrderDetailResponseDTO(), OrderResponseDTO.from(order, items), {
-            paymentSummary,
-            history: buildHistory(order),
-        });
+    static from(order: OrderEntity, items: OrderItemEntity[]): OrderDetailResponseDTO {
+        const dto = new OrderDetailResponseDTO();
+        const base = OrderResponseDTO.from(order, items);
+        Object.assign(dto, base);
+        dto.history = buildHistory(order);
+        return dto;
     }
 }
 
 function buildHistory(order: OrderEntity): Array<{status: OrderStatus; ts: string}> {
-    const history: Array<{status: OrderStatus; ts: string}> = [];
-
-    const add = (status: OrderStatus, ts: Date | null) => {
-        if (ts) history.push({status, ts: ts.toISOString()});
+    const out: Array<{status: OrderStatus; ts: string}> = [];
+    const push = (status: OrderStatus, ts: Date | null | undefined) => {
+        if (ts) out.push({status, ts: ts.toISOString()});
     };
 
     if (order.paymentMethod === PaymentMethod.ONLINE) {
-        add(OrderStatus.PENDING_PAYMENT, order.createdAt);
-        if (order.status !== OrderStatus.PENDING_PAYMENT) {
-            add(OrderStatus.PLACED, order.createdAt);
-        }
+        push(OrderStatus.PENDING_PAYMENT, order.createdAt);
+        push(OrderStatus.PLACED, order.createdAt);
     } else {
-        add(OrderStatus.PLACED, order.createdAt);
+        push(OrderStatus.PLACED, order.createdAt);
     }
-    add(OrderStatus.ACCEPTED, order.acceptedAt);
-    add(OrderStatus.REJECTED, order.rejectedAt);
-    add(OrderStatus.READY, order.readyAt);
-    add(OrderStatus.ASSIGNED, order.assignedAt);
-    add(OrderStatus.PICKED, order.pickedAt);
-    add(OrderStatus.DELIVERED, order.deliveredAt);
-    add(OrderStatus.CANCELLED, order.cancelledAt);
+    push(OrderStatus.ACCEPTED, order.acceptedAt);
+    push(OrderStatus.REJECTED, order.rejectedAt);
+    push(OrderStatus.READY, order.readyAt);
+    push(OrderStatus.ASSIGNED, order.assignedAt);
+    push(OrderStatus.PICKED, order.pickedAt);
+    push(OrderStatus.DELIVERED, order.deliveredAt);
+    push(OrderStatus.CANCELLED, order.cancelledAt);
 
-    return history;
+    return out;
 }

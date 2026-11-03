@@ -1,0 +1,16 @@
+meta {
+  name: My earnings
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{orderBase}}/agents/earnings
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{agentToken}}
+  X-Region: {{region}}
+}
