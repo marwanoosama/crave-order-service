@@ -1,5 +1,5 @@
 meta {
-  name: Kashier webhook (SUCCESS — sign payload, see docs)
+  name: Kashier webhook (SUCCESS)
   type: http
   seq: 1
 }
@@ -11,20 +11,53 @@ post {
 }
 
 headers {
-  x-kashier-signature: REPLACE_WITH_HMAC_SHA256
+  x-kashier-signature: PASTE_HEX_HMAC_HERE
 }
 
 body:json {
   {
     "event": "pay",
-    "type": "transaction",
-    "status": "SUCCESS",
     "data": {
-      "id": "demo-tx-1",
-      "amount": "155.00",
+      "amount": "185.00",
       "currency": "EGP",
-      "mid": "MID-53462-938"
-    },
-    "merchantOrderId": "{{onlineOrderId}}"
+      "merchantOrderId": "{{onlineOrderId}}",
+      "kashierOrderId": "KO-12",
+      "method": "card",
+      "orderReference": "LOCAL-12",
+      "status": "SUCCESS",
+      "transactionId": "demo-tx-1",
+      "transactionResponseCode": "00",
+      "signatureKeys": ["amount", "currency", "merchantOrderId", "kashierOrderId", "method", "orderReference", "status", "transactionId", "transactionResponseCode"]
+    }
   }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.success !== true) console.log("unexpected webhook response", body);
+}
+
+docs {
+  # Kashier webhook (already automated — usually don't need to send this by hand)
+
+  This endpoint is what Kashier's servers call after a checkout completes.
+  Locally, Kashier can NOT reach localhost:4000 (KASHIER_WEBHOOK_URL is not
+  publicly reachable), so the order stays `pending_payment` after paying.
+
+  Easiest flow locally (does all of this automatically):
+    npx tsx play/pay-webhook.ts <orderPublicId>
+  That reads the order from the DB, signs the payload with the real HMAC
+  algorithm and POSTs it here. Status goes pending_payment -> placed and a
+  transaction row is created.
+
+  If you really want to send this request by hand:
+  - merchantOrderId = the ORDER's publicId returned by POST /orders
+    (the "02 - Create order (Kashier online)" request already saves it into
+    {{onlineOrderId}}).
+  - Replace transactionId with something unique per payment — retries with the
+    SAME transactionId are de-duped as already-processed.
+  - Fill `x-kashier-signature` with HMAC-SHA256(key = KASHIER_API_KEY from
+    backend/.env) over the signatureKeys fields, sorted alphabetically,
+    concatenated as `key=encodeURIComponent(value)&...`
+    (copy the signing snippet from backend/play/pay-webhook.ts).
 }
