@@ -34,6 +34,7 @@ import {
 import {env} from "../../../lib/config/env";
 import {
     OrderDetailResponseDTO,
+    OrderPaymentSummary,
     OrderResponseDTO,
     OrderResponsePaymentInfo,
     OrderStatusResponseDTO,
@@ -48,6 +49,9 @@ import {
     updateOrderStatus,
 } from "../repository/order.repo";
 import {bulkInsertItems, countItemsByOrderIds, findItemsByOrderIds} from "../repository/order-item.repo";
+import {findTransactionsByOrderIds} from "../../payment/repository/transaction.repo";
+import {TransactionType, TransactionStatus} from "../../payment/enums";
+import {TransactionEntity} from "../../payment/entity/transaction.entity";
 import {insertOutboxEvent} from "../../../lib/events/outbox.repo";
 import {EVENT_TYPES} from "../../../lib/events/event-types";
 
@@ -180,6 +184,12 @@ export class OrderService {
             throw err;
         }
 
+        // Online orders: the checkout session is minted inline so the client
+        // gets the redirectUrl with the order. A provider failure does NOT
+        // void the order (docs/business-logic/orders.md §2) — it stays
+        // pending_payment and the client retries POST /payments/init. A
+        // background sweep cancels pending_payment orders older than
+        // PAYMENT_SESSION_TIMEOUT_MIN (app/order/jobs.ts).
         let payment: OrderResponsePaymentInfo | undefined;
         if (body.paymentMethod === PaymentMethod.ONLINE) {
             try {
@@ -191,24 +201,10 @@ export class OrderService {
                     expiresAt: dto.expiresAt,
                 };
             } catch (err) {
-                logger.warn("payment init failed; voiding order", {
+                logger.warn("payment init failed; order stays pending_payment until sweep or retry", {
                     publicId: order.publicId,
                     error: (err as Error).message,
                 });
-
-                await updateOrderStatus(
-                    order.publicId,
-                    OrderStatus.CANCELLED,
-                    "cancelled_at",
-                    db(resolvedRegion),
-                ).catch((voidErr) =>
-                    logger.error("failed to void order", {
-                        publicId: order.publicId,
-                        error: (voidErr as Error).message,
-                    }),
-                );
-                await this.releaseStock(body.branchId, body.items, publicId, correlationId);
-                throw err;
             }
         }
 
@@ -227,8 +223,44 @@ export class OrderService {
 
         this.assertReadAccess(actor, order);
 
-        const items = await findItemsByOrderIds([order.id], conn);
-        return OrderDetailResponseDTO.from(order, items);
+        const [items, transactions] = await Promise.all([
+            findItemsByOrderIds([order.id], conn),
+            findTransactionsByOrderIds([order.id], conn),
+        ]);
+
+        const paymentSummary = this.buildPaymentSummary(order, transactions);
+        return OrderDetailResponseDTO.fromDetail(order, items, paymentSummary);
+    };
+
+    private buildPaymentSummary = (order: OrderEntity, transactions: TransactionEntity[]): OrderPaymentSummary => {
+        const chargeTx = transactions.find((t) => t.transactionType === TransactionType.CHARGE);
+        const refundTxs = transactions.filter(
+            (t) => t.transactionType === TransactionType.REFUND && t.status === TransactionStatus.SUCCEEDED,
+        );
+        const refundedAmount = refundTxs.reduce((acc, t) => acc + t.amount, 0);
+
+        let status: "pending" | "authorized" | "captured" | "failed" | "refunded" = "pending";
+        if (order.paymentMethod === PaymentMethod.COD) {
+            status = order.status === OrderStatus.DELIVERED ? "captured" : "pending";
+        } else if (chargeTx) {
+            if (chargeTx.isRefunded || (chargeTx.amount > 0 && refundedAmount >= chargeTx.amount)) {
+                status = "refunded";
+            } else if (chargeTx.status === TransactionStatus.SUCCEEDED) {
+                status = "captured";
+            } else if (chargeTx.status === TransactionStatus.FAILED) {
+                status = "failed";
+            } else {
+                status = "pending";
+            }
+        }
+
+        return {
+            method: order.paymentMethod,
+            status,
+            amount: chargeTx ? chargeTx.amount : order.total,
+            currency: order.currency,
+            refundedAmount,
+        };
     };
 
     listCustomerOrders = async (actor: ActorContext, region: string, year: number, pagination: PaginationParams) => {
@@ -357,8 +389,11 @@ export class OrderService {
     };
 
     private clearBranchOrdersCache = async (region: string, branchId: number) => {
+        // Matches withCache keys for GET /api/restaurants/:rId/branches/:bId/orders*
+        // across restaurant ids and query-string variants (status/filters/cursor).
+        const pattern = `${region}:GET:/api/restaurants/*/branches/${branchId}/orders*`;
         await this.cache
-            .del(`${region}:GET:/api/restaurant/orders?branchId=${branchId}`)
+            .delByPattern(pattern)
             .catch((err) =>
                 logger.warn("branch orders cache invalidation failed", {
                     region,

@@ -3,10 +3,7 @@ import {toMs} from "../../pkg/utils/time";
 import {logger} from "../logger/logger";
 import {getPermissionsByRole} from "../core-client/rbac.client";
 
-
-
 type RbacPermissionsChangedPayload = {role?: string};
-
 
 @injectable()
 export class PermissionCacheService {
@@ -27,15 +24,12 @@ export class PermissionCacheService {
         return permissions.includes(`${resource}:${action}`);
     };
 
-    invalidate = (roleName?: string): void => {
-        if (roleName) this.cache.delete(roleName);
-        else this.cache.clear();
-    };
-
-    
+    // Event "rbac.permissions_changed": drop one role's permissions or the whole cache.
     handlePermissionsChanged = async (payload: unknown): Promise<void> => {
         const p = payload as RbacPermissionsChangedPayload | undefined;
-        this.invalidate(p?.role);
+        if (p?.role) this.cache.delete(p.role);
+        else this.cache.clear();
+
         logger.info("rbac.permissions_changed -> permission cache cleared", {role: p?.role ?? "*"});
     };
 }

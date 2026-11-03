@@ -3,13 +3,19 @@ import {ICacheProvider} from "../../pkg/cache/cache.interface";
 import {container} from "../di/container";
 import {TOKENS} from "../di/tokens";
 
+/** Canonical cache key for a request — also what services must use to invalidate. */
+export function cacheKeyFromRequest(req: Request, userScoped = false): string {
+    let key = `${req.method}:${req.originalUrl}`;
+    if (userScoped) key = `${key}:${req.user?.userId}`;
+    if (req.region) key = `${req.region}:${key}`;
+    return key;
+}
+
 export function withCache(ttl = 3600, userScoped = false) {
     return async (req: Request, res: Response, next: NextFunction) => {
         try {
             const cacheProvider = container.resolve<ICacheProvider>(TOKENS.CacheProvider);
-            let key = `${req.method}:${req.originalUrl}`;
-            if (userScoped) key = `${key}:${req.user?.userId}`;
-            if (req.region) key = `${req.region}:${key}`;
+            const key = cacheKeyFromRequest(req, userScoped);
 
             const cached = await cacheProvider.get(key);
             if (cached) {

@@ -15,14 +15,7 @@ import {PaymentService} from "../../app/payment/service/payment.service";
 import {KashierWebhookService} from "../../app/payment/service/kashier-webhook.service";
 import {PaymentController} from "../../app/payment/controller/payment.controller";
 import {WebhookController} from "../../app/payment/controller/webhook.controller";
-import {PresenceService} from "../../app/agent/service/presence.service";
-import {SettlementService} from "../../app/agent/service/settlement.service";
-import {AgentService} from "../../app/agent/service/agent.service";
-import {AgentController} from "../../app/agent/controller/agent.controller";
-import {AssignmentService} from "../../app/assignment/service/assignment.service";
-import {AssignmentController} from "../../app/assignment/controller/assignment.controller";
-import {FinanceService} from "../../app/finance/service/finance.service";
-import {FinanceController} from "../../app/finance/controller/finance.controller";
+// Phase 3+ modules (deliveries/agents/finance) register here when built.
 
 
 container.registerSingleton<Logger>(TOKENS.Logger, Logger);
@@ -56,16 +49,5 @@ container.registerSingleton<KashierWebhookService>(TOKENS.KashierWebhookService,
 container.registerSingleton<PaymentController>(TOKENS.PaymentController, PaymentController);
 container.registerSingleton<WebhookController>(TOKENS.WebhookController, WebhookController);
 
-
-container.registerSingleton<PresenceService>(TOKENS.PresenceService, PresenceService);
-container.registerSingleton<AssignmentService>(TOKENS.AssignmentService, AssignmentService);
-container.registerSingleton<SettlementService>(TOKENS.SettlementService, SettlementService);
-container.registerSingleton<AgentService>(TOKENS.AgentService, AgentService);
-container.registerSingleton<AgentController>(TOKENS.AgentController, AgentController);
-container.registerSingleton<AssignmentController>(TOKENS.AssignmentController, AssignmentController);
-
-
-container.registerSingleton<FinanceService>(TOKENS.FinanceService, FinanceService);
-container.registerSingleton<FinanceController>(TOKENS.FinanceController, FinanceController);
 
 export {container};

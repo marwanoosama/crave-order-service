@@ -1,0 +1,189 @@
+{
+  "info": {
+    "name": "Crave Order Service API",
+    "description": "Bruno collection for quick manual testing of all public endpoints. Replace the {{}} variables with appropriate values (JWT tokens, region, ids).",
+    "schema": "https://schema.getbruno.com/collection/v1"
+  },
+  "variables": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000",
+      "type": "string"
+    },
+    {
+      "key": "region",
+      "value": "eg",
+      "type": "string"
+    },
+    {
+      "key": "jwt",
+      "value": "<USER_JWT>",
+      "type": "string"
+    },
+    {
+      "key": "adminJwt",
+      "value": "<ADMIN_JWT>",
+      "type": "string"
+    },
+    {
+      "key": "restaurantJwt",
+      "value": "<RESTAURANT_JWT>",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "order-123",
+      "type": "string"
+    },
+    {
+      "key": "paymentId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "restaurantId",
+      "value": "10",
+      "type": "string"
+    },
+    {
+      "key": "publicId",
+      "value": "abc123",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Init Payment Session",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payments/init?region={{region}}",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" },
+          { "key": "region", "value": "{{region}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"orderId\": \"{{orderId}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Refund Payment",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payments/{{paymentId}}/refund?region={{region}}",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{adminJwt}}" },
+          { "key": "region", "value": "{{region}}" },
+          { "key": "idempotency-key", "value": "refund-{{paymentId}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{}" }
+      }
+    },
+    {
+      "name": "Get Payment (admin / owner / customer)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/payments/{{paymentId}}?region={{region}}",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt}}" },
+          { "key": "region", "value": "{{region}}" }
+        ]
+      }
+    },
+    {
+      "name": "Get Payment (restaurant scoped)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/restaurants/{{restaurantId}}/payments/{{paymentId}}?region={{region}}",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{restaurantJwt}}" },
+          { "key": "region", "value": "{{region}}" }
+        ]
+      }
+    },
+    {
+      "name": "Create Order",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/orders?region={{region}}",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" },
+          { "key": "region", "value": "{{region}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"restaurantId\": 1,\n  \"items\": [{\n    \"productId\": 5,\n    \"qty\": 2\n  }],\n  \"deliveryAddress\": \"123 Main St\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Get Order Details",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/orders/{{publicId}}?region={{region}}",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt}}" },
+          { "key": "region", "value": "{{region}}" }
+        ]
+      }
+    },
+    {
+      "name": "List Customer Orders",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/customer/orders?region={{region}}",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt}}" },
+          { "key": "region", "value": "{{region}}" }
+        ]
+      }
+    },
+    {
+      "name": "List Restaurant Orders",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/restaurant/orders?region={{region}}",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{restaurantJwt}}" },
+          { "key": "region", "value": "{{region}}" }
+        ]
+      }
+    },
+    {
+      "name": "Update Order Status (admin or restaurant)",
+      "request": {
+        "method": "PATCH",
+        "url": "{{baseUrl}}/orders/{{publicId}}/status?region={{region}}",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{adminJwt}}" },
+          { "key": "region", "value": "{{region}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"accepted\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Cancel Order (admin)",
+      "request": {
+        "method": "PATCH",
+        "url": "{{baseUrl}}/admin/orders/{{publicId}}/status?region={{region}}",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{adminJwt}}" },
+          { "key": "region", "value": "{{region}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"cancelled\"\n}"
+        }
+      }
+    }
+  ]
+}

@@ -111,11 +111,25 @@ export class OrderStatusResponseDTO {
     }
 }
 
+export interface OrderPaymentSummary {
+    method: "online" | "cod";
+    status: "pending" | "authorized" | "captured" | "failed" | "refunded";
+    amount: number;
+    currency: string;
+    refundedAmount: number;
+}
+
 export class OrderDetailResponseDTO extends OrderResponseDTO {
+    paymentSummary?: OrderPaymentSummary;
     history!: Array<{status: OrderStatus; ts: string}>;
 
-    static from(order: OrderEntity, items: OrderItemEntity[]): OrderDetailResponseDTO {
+    static fromDetail(
+        order: OrderEntity,
+        items: OrderItemEntity[],
+        paymentSummary?: OrderPaymentSummary,
+    ): OrderDetailResponseDTO {
         return Object.assign(new OrderDetailResponseDTO(), OrderResponseDTO.from(order, items), {
+            paymentSummary,
             history: buildHistory(order),
         });
     }
@@ -130,8 +144,12 @@ function buildHistory(order: OrderEntity): Array<{status: OrderStatus; ts: strin
 
     if (order.paymentMethod === PaymentMethod.ONLINE) {
         add(OrderStatus.PENDING_PAYMENT, order.createdAt);
+        if (order.status !== OrderStatus.PENDING_PAYMENT) {
+            add(OrderStatus.PLACED, order.createdAt);
+        }
+    } else {
+        add(OrderStatus.PLACED, order.createdAt);
     }
-    add(OrderStatus.PLACED, order.createdAt);
     add(OrderStatus.ACCEPTED, order.acceptedAt);
     add(OrderStatus.REJECTED, order.rejectedAt);
     add(OrderStatus.READY, order.readyAt);

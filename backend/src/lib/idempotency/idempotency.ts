@@ -1,4 +1,5 @@
 import {Request, Response, NextFunction} from "express";
+import {createHash} from "crypto";
 import {ICacheProvider} from "../../pkg/cache/cache.interface";
 import {container} from "../di/container";
 import {TOKENS} from "../di/tokens";
@@ -10,8 +11,27 @@ interface IdempotencyOptions {
     strict?: boolean;
 }
 
+interface IdempotencyRecord {
+    bodyHash: string;
+    status: number;
+    response: unknown;
+}
 
+function hashBody(body: unknown): string {
+    return createHash("sha256")
+        .update(JSON.stringify(body ?? {}))
+        .digest("hex");
+}
 
+/**
+ * Redis-backed idempotency (Redis loss window is the same cost core-service
+ * accepts; the DB fallback becomes the `idempotency_keys` table later).
+ *
+ * - Same key + same body within TTL → replays the original 2xx response.
+ * - Same key + DIFFERENT body → 409 IdempotencyConflict.
+ * - Only successful (2xx) responses are ever stored: a transient failure is
+ *   never frozen for 24h, the client's retry re-executes the handler.
+ */
 export function idempotency(options: IdempotencyOptions = {}) {
     const {strict = false} = options;
 
@@ -29,16 +49,36 @@ export function idempotency(options: IdempotencyOptions = {}) {
 
         try {
             const cacheProvider = container.resolve<ICacheProvider>(TOKENS.CacheProvider);
-            const key = `idempotency:${req.method}:${req.originalUrl}:${idempotencyKey}`;
+            const key = `idempotency:${encodeURIComponent(req.originalUrl)}:${encodeURIComponent(idempotencyKey)}`;
+            const bodyHash = hashBody(req.body);
 
             const cached = await cacheProvider.get(key);
             if (cached) {
-                return res.status(200).json(JSON.parse(cached));
+                try {
+                    const record = JSON.parse(cached) as IdempotencyRecord;
+                    if (record.bodyHash !== bodyHash) {
+                        return res.status(409).json({error: "IdempotencyConflict"});
+                    }
+                    if (record.status >= 200 && record.status < 300) {
+                        return res.status(record.status).json(record.response);
+                    }
+                    // A legacy/garbled record or an anomalous stored status:
+                    // fall through and execute.
+                } catch {
+                    // Corrupt record — execute the handler.
+                }
             }
 
             const originalJson = res.json.bind(res);
             res.json = ((body: unknown) => {
-                cacheProvider.set(key, JSON.stringify(body), TTL).catch(() => {});
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    const record: IdempotencyRecord = {
+                        bodyHash,
+                        status: res.statusCode,
+                        response: body,
+                    };
+                    cacheProvider.set(key, JSON.stringify(record), TTL).catch(() => {});
+                }
                 return originalJson(body);
             }) as Response["json"];
 

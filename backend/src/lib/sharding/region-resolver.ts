@@ -7,7 +7,10 @@ export function resolveRegion(req: Request, _res: Response, next: NextFunction) 
     const headerRaw = req.headers["x-region"];
     const headerValue = Array.isArray(headerRaw) ? headerRaw[0] : headerRaw;
     const queryValue = typeof req.query.region === "string" ? req.query.region : undefined;
-    const norm = normalizeRegion(headerValue ?? queryValue);
+    // Documented precedence: ?region= beat X-Region — the order here matters
+    // because providers (e.g. Kashier webhooks) can only carry region in the
+    // query string.
+    const norm = normalizeRegion(queryValue ?? headerValue);
     if (norm === "all") {
         req.region = "all";
     } else if (norm && isRegion(norm)) {

@@ -6,6 +6,7 @@ import {logger} from "./lib/logger/logger";
 import {destroyAll, pingAll} from "./lib/knex/knex";
 import {messageBroker} from "./lib/messaging/init";
 import {startCoreEventsConsumer} from "./lib/core-events/consumer";
+import {orderModuleCoreEventHandlers} from "./app/order/core-events.handlers";
 import {attachWsServer} from "./lib/websocket/ws-server";
 import {container} from "./lib/di/container";
 import {TOKENS} from "./lib/di/tokens";
@@ -32,7 +33,7 @@ server.listen(env.port, async () => {
 
     messageBroker
         .connect()
-        .then(() => startCoreEventsConsumer(messageBroker))
+        .then(() => startCoreEventsConsumer(messageBroker, orderModuleCoreEventHandlers()))
         .catch((err) => {
             logger.warn("rabbitmq not reachable at boot — will retry", {err});
         });

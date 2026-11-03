@@ -17,13 +17,25 @@ export function computeWebhookSignature(data: Record<string, unknown>, signature
     return createHmac("sha256", apiKey).update(payload, "utf8").digest("hex");
 }
 
-export function verifyWebhookSignature(data: Record<string, unknown>, signatureKeys: string[], apiKey: string, providedSignature: string): boolean {
+export function verifyWebhookSignature(
+    data: Record<string, unknown>,
+    signatureKeys: string[],
+    apiKey: string,
+    providedSignature: string,
+    fallbackKey?: string,
+): boolean {
     if (!providedSignature || typeof providedSignature !== "string") return false;
-    const expected = computeWebhookSignature(data, signatureKeys, apiKey);
-    if (expected.length !== providedSignature.length) return false;
-    try {
-        return timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(providedSignature, "hex"));
-    } catch {
-        return false;
-    }
+    const verifyWithKey = (key: string): boolean => {
+        const expected = computeWebhookSignature(data, signatureKeys, key);
+        if (expected.length !== providedSignature.length) return false;
+        try {
+            return timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(providedSignature, "hex"));
+        } catch {
+            return false;
+        }
+    };
+
+    if (verifyWithKey(apiKey)) return true;
+    if (fallbackKey && verifyWithKey(fallbackKey)) return true;
+    return false;
 }

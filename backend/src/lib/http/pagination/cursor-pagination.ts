@@ -19,21 +19,50 @@ export interface PaginationMeta {
     count: number;
 }
 
+const CURSOR_SEPARATOR = "|";
+
 function camelToSnake(str: string): string {
     return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
 
+/**
+ * Decodes a stable composite cursor "<sortValue>|<id>" into its raw parts.
+ */
+function decodeCursor(cursor: string): {sortValue: string; id: string} | undefined {
+    const idx = cursor.lastIndexOf(CURSOR_SEPARATOR);
+    if (idx <= 0) return undefined;
+    const sortValue = cursor.slice(0, idx);
+    const id = cursor.slice(idx + 1);
+    if (!sortValue || !id) return undefined;
+    return {sortValue, id};
+}
+
+/**
+ * Applies keyset pagination with a composite (sortColumn, id) cursor. The id
+ * tiebreaker prevents rows from being skipped/shared when the sort column
+ * (usually a timestamp) is not unique.
+ */
 export function applyCursorPagination(
     query: Knex.QueryBuilder,
     params: PaginationParams,
 ): Knex.QueryBuilder {
     if (!params.sortBy) return query;
     const dbColumn = camelToSnake(params.sortBy);
-    if (params.cursor) {
+    const decoded = params.cursor ? decodeCursor(params.cursor) : undefined;
+
+    if (decoded) {
         const op = params.sortOrder === "asc" ? ">" : "<";
-        query = query.where(dbColumn, op, params.cursor);
+        query = query.andWhere(function (this) {
+            this.where(dbColumn, op, decoded.sortValue)
+                .orWhere(dbColumn, "=", decoded.sortValue)
+                .andWhere("id", op, decoded.id);
+        });
     }
-    return query.orderBy(dbColumn, params.sortOrder).limit(params.limit + 1);
+
+    return query
+        .orderBy(dbColumn, params.sortOrder)
+        .orderBy("id", params.sortOrder)
+        .limit(params.limit + 1);
 }
 
 export function applyFilters(
@@ -41,28 +70,30 @@ export function applyFilters(
     filters: FilterParams[],
 ): Knex.QueryBuilder {
     for (const filter of filters) {
+        // DB column names are snake_case; mirrors the sortBy handling above.
+        const dbColumn = camelToSnake(filter.field);
         switch (filter.operator) {
             case "eq":
-                query.where(filter.field, filter.value);
+                query.where(dbColumn, filter.value);
                 break;
             case "gt":
-                query.where(filter.field, ">", filter.value);
+                query.where(dbColumn, ">", filter.value);
                 break;
             case "lt":
-                query.where(filter.field, "<", filter.value);
+                query.where(dbColumn, "<", filter.value);
                 break;
             case "lte":
-                query.where(filter.field, "<=", filter.value);
+                query.where(dbColumn, "<=", filter.value);
                 break;
             case "gte":
-                query.where(filter.field, ">=", filter.value);
+                query.where(dbColumn, ">=", filter.value);
                 break;
             case "like":
-                query.whereLike(filter.field, `%${filter.value}%`);
+                query.whereLike(dbColumn, `%${filter.value}%`);
                 break;
             case "in":
                 query.whereIn(
-                    filter.field,
+                    dbColumn,
                     Array.isArray(filter.value) ? filter.value : [filter.value],
                 );
                 break;
@@ -71,6 +102,10 @@ export function applyFilters(
     return query;
 }
 
+/**
+ * Reads the DB-level column (snake_case) off the raw row and encodes a
+ * composite cursor the next request can pass back as `?cursor=`.
+ */
 export function buildPaginationResult<T>(
     rows: T[],
     limit: number,
@@ -80,12 +115,21 @@ export function buildPaginationResult<T>(
     const data = hasMore ? rows.slice(0, limit) : rows;
     let nextCursor: string | null = null;
 
-    if (data.length > 0) {
+    if (hasMore && data.length > 0) {
         const lastItem = data[data.length - 1] as Record<string, unknown>;
-        nextCursor = hasMore && lastItem ? String(lastItem[sortBy]) : null;
+        const sortValue = lastItem[camelToSnake(sortBy)];
+        const id = lastItem["id"];
+        if (sortValue !== undefined && sortValue !== null && id !== undefined && id !== null) {
+            nextCursor = encodeCursor(String(sortValue), String(id));
+        }
     }
+
     return {
         data,
         meta: {nextCursor, hasMore, count: data.length},
     };
+}
+
+function encodeCursor(sortValue: string, id: string): string {
+    return `${sortValue}${CURSOR_SEPARATOR}${id}`;
 }

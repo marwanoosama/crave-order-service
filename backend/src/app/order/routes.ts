@@ -28,10 +28,25 @@ orderRouter.get(
 );
 
 orderRouter.get(
+    "/customer/orders/:publicId",
+    authenticate,
+    requireRegion,
+    orderController.getOrder,
+);
+
+orderRouter.get(
     "/customer/orders",
     authenticate,
     requireRegion,
     orderController.listCustomerOrders,
+);
+
+orderRouter.patch(
+    "/orders/:publicId/status",
+    authenticate,
+    requireRegion,
+    idempotency({strict: true}),
+    orderController.updateStatus,
 );
 
 orderRouter.patch(
@@ -40,6 +55,16 @@ orderRouter.patch(
     requireRegion,
     idempotency({strict: true}),
     orderController.updateStatus,
+);
+
+orderRouter.get(
+    "/restaurant/orders",
+    authenticate,
+    requireRegion,
+    requireBranchAccess("branchId"),
+    rbac({resource: "orders", action: "read"}),
+    withCache(10),
+    orderController.listRestaurantOrders,
 );
 
 orderRouter.get(

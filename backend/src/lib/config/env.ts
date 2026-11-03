@@ -47,14 +47,22 @@ const baseSchema = z.object({
     WS_HEARTBEAT_SEC: z.string().default("30"),
 
     KASHIER_BASE_URL: z.string().default("https://test-api.kashier.io"),
-    KASHIER_FEP_BASE_URL: z.string().default("https://test-fep.kashier.io"),
     KASHIER_MERCHANT_ID: z.string(),
     KASHIER_API_KEY: z.string(),
-    KASHIER_SECRET_KEY: z.string(),
+    // Kashier's "secret key" — sent as the Authorization header on
+    // /v3/payment/sessions. (The webhook HMAC, per Kashier docs, is keyed with
+    // the API key, not this secret — see pkg/payments/kashier/kashier.signature.ts.)
+    KASHIER_WEBHOOK_SECRET: z.string(),
     KASHIER_PAYMENT_TYPE: z.string().default("credit"),
     KASHIER_RETURN_URL: z.string(),
     KASHIER_FAIL_URL: z.string(),
-    KASHIER_WEBHOOK_URL: z.string(),
+    // Publicly reachable URL of POST /api/payments/webhook/kashier. Sent to
+    // Kashier as the per-session `serverWebhook`. Optional: when empty, no
+    // serverWebhook is registered and the client-side confirm/verify flow
+    // replaced by the provider's own portal confirmation must be used.
+    // The region query param (?region=xx) is appended per session by the
+    // payment service — configure the base URL only.
+    KASHIER_WEBHOOK_URL: z.string().default(""),
     PAYMENT_SESSION_TIMEOUT_MIN: z.string().default("15"),
     ONLINE_PAYMENT_REGIONS: z.string().default("eg"),
 
@@ -183,10 +191,9 @@ export const env = {
 
     kashier: {
         baseUrl: parsed.KASHIER_BASE_URL,
-        fepBaseUrl: parsed.KASHIER_FEP_BASE_URL,
         merchantId: parsed.KASHIER_MERCHANT_ID,
         apiKey: parsed.KASHIER_API_KEY,
-        secretKey: parsed.KASHIER_SECRET_KEY,
+        secretKey: parsed.KASHIER_WEBHOOK_SECRET,
         paymentType: parsed.KASHIER_PAYMENT_TYPE,
         returnUrl: parsed.KASHIER_RETURN_URL,
         failUrl: parsed.KASHIER_FAIL_URL,

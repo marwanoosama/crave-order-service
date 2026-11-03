@@ -23,6 +23,37 @@ export class RedisCacheProvider implements ICacheProvider {
         return this.client.del(key);
     }
 
+    /**
+     * SCAN-based collective delete. Never uses KEYS (blocks the Redis
+     * server); batches every 200 scanned keys to cap growth in fan-outs.
+     */
+    async delByPattern(pattern: string): Promise<number> {
+        let cursor = "0";
+        let deleted = 0;
+        let batch: string[] = [];
+
+        do {
+            const [next, keys] = await this.client.scan(
+                cursor,
+                "MATCH",
+                pattern,
+                "COUNT",
+                200,
+            );
+            cursor = next;
+            if (keys.length > 0) batch = batch.concat(keys);
+            if (batch.length > 0 && (cursor === "0" || batch.length >= 500)) {
+                deleted += await this.client.del(...batch);
+                batch = [];
+            }
+        } while (cursor !== "0");
+
+        if (batch.length > 0) {
+            deleted += await this.client.del(...batch);
+        }
+        return deleted;
+    }
+
     async trySet(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
         const res = ttlSeconds
             ? await this.client.set(key, value, "EX", ttlSeconds, "NX")

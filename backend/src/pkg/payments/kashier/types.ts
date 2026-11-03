@@ -7,9 +7,9 @@ export interface KashierCreateSessionRequest {
     currency: string;             
     order: string;                
     type: "one-time";
-    allowedMethods: string;       
+    allowedMethods: string;
     enable3DS: boolean;
-    serverWebhook: string;
+    serverWebhook?: string;
     merchantRedirect?: string;
     failureRedirect?: boolean;
     description?: string;
@@ -44,7 +44,7 @@ export interface KashierWebhookData {
     kashierOrderId: string;
     orderReference?: string;
     transactionId: string;
-    status: "SUCCESS" | "FAILED";
+    status: "SUCCESS" | "FAILED" | "PENDING";
     method?: string;
     amount: number;
     currency: string;

@@ -11,32 +11,22 @@ import type {
 } from "../message-broker.interface";
 import type {RabbitMQConfig} from "./rabbitmq.types";
 
-
 export class RabbitMQClient implements IMessageBroker {
     private connection: AmqpConnectionManager | null = null;
     private publishChannel: ChannelWrapper | null = null;
 
     constructor(private readonly config: RabbitMQConfig) {}
 
-    
     async connect(): Promise<void> {
         if (this.connection) return;
 
         const reconnectSec = Math.max(1, Math.round(this.config.reconnectInitialMs / 1000));
         this.connection = amqp.connect([this.config.url], {reconnectTimeInSeconds: reconnectSec});
 
-        
-        
-        this.publishChannel = this.connection.createChannel({
-            json: false,
-            setup: async (_ch: ConfirmChannel) => {
-                
-            },
-        });
+        this.publishChannel = this.connection.createChannel({json: false});
         await this.publishChannel.waitForConnect();
     }
 
-    
     async close(): Promise<void> {
         await this.publishChannel?.close().catch(() => {});
         await this.connection?.close().catch(() => {});
@@ -44,43 +34,36 @@ export class RabbitMQClient implements IMessageBroker {
         this.connection = null;
     }
 
-    
-    
     async declareTopology(opts: ConsumerOptions): Promise<void> {
         await this.connect();
-        const ch = this.connection!.createChannel({
+        const channel = this.connection!.createChannel({
             json: false,
-            setup: (c: ConfirmChannel) => assertTopology(c, opts),
+            setup: (ch: ConfirmChannel) => assertTopology(ch, opts),
         });
-        await ch.waitForConnect(); 
-        await ch.close();
+        await channel.waitForConnect();
+        await channel.close();
     }
 
-    
-    
-    
     async consume(
         opts: ConsumerOptions,
         handler: (msg: ConsumeMessage) => Promise<void>,
     ): Promise<void> {
         await this.connect();
-        const ch = this.connection!.createChannel({
+        const channel = this.connection!.createChannel({
             json: false,
-            setup: async (c: ConfirmChannel) => {
-                await assertTopology(c, opts);
-                await c.prefetch(opts.prefetch); 
-                await c.consume(
+            setup: async (ch: ConfirmChannel) => {
+                await assertTopology(ch, opts);
+                await ch.prefetch(opts.prefetch);
+                await ch.consume(
                     opts.queue,
-                    (raw) => handleMessage(c, raw, handler),
-                    {noAck: false}, 
+                    (raw) => handleRawMessage(ch, raw, handler),
+                    {noAck: false},
                 );
             },
         });
-        await ch.waitForConnect();
+        await channel.waitForConnect();
     }
 
-    
-    
     async publish(exchange: string, routingKey: string, body: Buffer): Promise<void> {
         await this.connect();
         await this.publishChannel!.publish(exchange, routingKey, body, {
@@ -90,17 +73,13 @@ export class RabbitMQClient implements IMessageBroker {
     }
 }
 
-
-
-
 async function assertTopology(ch: ConfirmChannel, opts: ConsumerOptions): Promise<void> {
     await ch.assertExchange(opts.exchange, "topic", {durable: true});
 
-    
     if (opts.deadLetterExchange && opts.deadLetterQueue) {
         await ch.assertExchange(opts.deadLetterExchange, "topic", {durable: true});
         await ch.assertQueue(opts.deadLetterQueue, {durable: true});
-        await ch.bindQueue(opts.deadLetterQueue, opts.deadLetterExchange, "#"); 
+        await ch.bindQueue(opts.deadLetterQueue, opts.deadLetterExchange, "#");
     }
 
     const queueArgs: Record<string, string> = {};
@@ -112,14 +91,12 @@ async function assertTopology(ch: ConfirmChannel, opts: ConsumerOptions): Promis
     }
 }
 
-
-
-async function handleMessage(
+async function handleRawMessage(
     ch: ConfirmChannel,
     raw: AmqpConsumeMessage | null,
     handler: (msg: ConsumeMessage) => Promise<void>,
 ): Promise<void> {
-    if (!raw) return; 
+    if (!raw) return;
 
     const msg: ConsumeMessage = {
         routingKey: raw.fields.routingKey,
@@ -132,6 +109,6 @@ async function handleMessage(
         await handler(msg);
     } catch (err) {
         console.error("[rabbitmq] handler threw:", (err as Error).message);
-        msg.nack(false); 
+        msg.nack(false);
     }
 }

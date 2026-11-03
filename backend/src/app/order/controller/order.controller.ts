@@ -67,10 +67,13 @@ export class OrderController {
             if (!req.region || req.region === "all") throw RegionNotResolvedError;
 
             const query = req.query as Record<string, unknown>;
+            const restaurantId = Number(req.params.restaurantId ?? req.query.restaurantId ?? req.user?.restaurantId);
+            const branchId = Number(req.params.branchId ?? req.query.branchId);
+
             const result = await this.orderService.listRestaurantOrders(
                 req.region,
-                Number(req.params.restaurantId),
-                Number(req.params.branchId),
+                restaurantId,
+                branchId,
                 req.query.status as OrderStatus | undefined,
                 req.query.from ? new Date(String(req.query.from)) : undefined,
                 req.query.to ? new Date(String(req.query.to)) : undefined,

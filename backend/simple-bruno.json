@@ -1,0 +1,130 @@
+{
+  "info": {
+    "name": "Crave Order Service API",
+    "description": "Simple Bruno collection – replace placeholder values manually.",
+    "schema": "https://schema.getbruno.com/collection/v1"
+  },
+  "item": [
+    {
+      "name": "Init Payment Session",
+      "request": {
+        "method": "POST",
+        "url": "http://localhost:4000/payments/init?region=eg",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer <YOUR_JWT>" },
+          { "key": "region", "value": "eg" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"orderId\": \"order-123\"\n}" }
+      }
+    },
+    {
+      "name": "Refund Payment",
+      "request": {
+        "method": "POST",
+        "url": "http://localhost:4000/payments/1/refund?region=eg",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer <ADMIN_JWT>" },
+          { "key": "region", "value": "eg" },
+          { "key": "idempotency-key", "value": "refund-1" }
+        ],
+        "body": { "mode": "raw", "raw": "{}" }
+      }
+    },
+    {
+      "name": "Get Payment",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:4000/payments/1?region=eg",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <YOUR_JWT>" },
+          { "key": "region", "value": "eg" }
+        ]
+      }
+    },
+    {
+      "name": "Get Payment (restaurant scoped)",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:4000/restaurants/10/payments/1?region=eg",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <RESTAURANT_JWT>" },
+          { "key": "region", "value": "eg" }
+        ]
+      }
+    },
+    {
+      "name": "Create Order",
+      "request": {
+        "method": "POST",
+        "url": "http://localhost:4000/orders?region=eg",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer <YOUR_JWT>" },
+          { "key": "region", "value": "eg" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"restaurantId\": 1,\n  \"items\": [{ \"productId\": 5, \"qty\": 2 }],\n  \"deliveryAddress\": \"123 Main St\"\n}" }
+      }
+    },
+    {
+      "name": "Get Order Details",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:4000/orders/abc123?region=eg",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <YOUR_JWT>" },
+          { "key": "region", "value": "eg" }
+        ]
+      }
+    },
+    {
+      "name": "List Customer Orders",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:4000/customer/orders?region=eg",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <YOUR_JWT>" },
+          { "key": "region", "value": "eg" }
+        ]
+      }
+    },
+    {
+      "name": "List Restaurant Orders",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:4000/restaurant/orders?region=eg",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <RESTAURANT_JWT>" },
+          { "key": "region", "value": "eg" }
+        ]
+      }
+    },
+    {
+      "name": "Update Order Status",
+      "request": {
+        "method": "PATCH",
+        "url": "http://localhost:4000/orders/abc123/status?region=eg",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer <ADMIN_JWT>" },
+          { "key": "region", "value": "eg" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"accepted\"\n}" }
+      }
+    },
+    {
+      "name": "Cancel Order (admin)",
+      "request": {
+        "method": "PATCH",
+        "url": "http://localhost:4000/admin/orders/abc123/status?region=eg",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer <ADMIN_JWT>" },
+          { "key": "region", "value": "eg" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"cancelled\"\n}" }
+      }
+    }
+  ]
+}

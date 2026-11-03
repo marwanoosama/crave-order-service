@@ -11,6 +11,13 @@ export interface ICacheProvider {
     
     del(key: string): Promise<number>;
 
+    /**
+     * Deletes every key matching a Redis-style glob pattern, e.g.
+     * "eg:GET:/api/restaurants/x/branches/3/orders...". Best-effort collective
+     * delete backed by SCAN — bounded, non-blocking.
+     */
+    delByPattern(pattern: string): Promise<number>;
+
     
     trySet(key: string, value: string, ttlSeconds?: number): Promise<boolean>;
 

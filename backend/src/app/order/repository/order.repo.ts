@@ -117,6 +117,11 @@ export async function findOrderByPublicId(publicId: string, conn: Knex): Promise
     return row ? toEntity(row) : undefined;
 }
 
+export async function findOrderById(id: number, conn: Knex): Promise<OrderEntity | undefined> {
+    const row = await conn("orders").select(ORDER_COLUMNS).where({id}).first();
+    return row ? toEntity(row) : undefined;
+}
+
 export async function findOwnerIdForRestaurant(restaurantId: number, conn: Knex): Promise<number | undefined> {
     const row = await conn("orders")
         .select("restaurant_owner_id")

@@ -1,0 +1,66 @@
+# Crave Order Service – curl requests (replace placeholders with real values)
+
+# Init Payment Session
+curl -X POST "http://localhost:4000/payments/init?region=eg" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <YOUR_JWT>" \
+  -H "region: eg" \
+  -d '{"orderId": "order-123"}'
+
+# Refund Payment (admin)
+curl -X POST "http://localhost:4000/payments/1/refund?region=eg" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <ADMIN_JWT>" \
+  -H "region: eg" \
+  -H "idempotency-key: refund-1" \
+  -d '{}'
+
+# Get Payment (any authorized user)
+curl -X GET "http://localhost:4000/payments/1?region=eg" \
+  -H "Authorization: Bearer <YOUR_JWT>" \
+  -H "region: eg"
+
+# Get Payment (restaurant scoped)
+curl -X GET "http://localhost:4000/restaurants/10/payments/1?region=eg" \
+  -H "Authorization: Bearer <RESTAURANT_JWT>" \
+  -H "region: eg"
+
+# Create Order
+curl -X POST "http://localhost:4000/orders?region=eg" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <YOUR_JWT>" \
+  -H "region: eg" \
+  -d '{
+    "restaurantId": 1,
+    "items": [{ "productId": 5, "qty": 2 }],
+    "deliveryAddress": "123 Main St"
+  }'
+
+# Get Order Details
+curl -X GET "http://localhost:4000/orders/abc123?region=eg" \
+  -H "Authorization: Bearer <YOUR_JWT>" \
+  -H "region: eg"
+
+# List Customer Orders
+curl -X GET "http://localhost:4000/customer/orders?region=eg" \
+  -H "Authorization: Bearer <YOUR_JWT>" \
+  -H "region: eg"
+
+# List Restaurant Orders
+curl -X GET "http://localhost:4000/restaurant/orders?region=eg" \
+  -H "Authorization: Bearer <RESTAURANT_JWT>" \
+  -H "region: eg"
+
+# Update Order Status (admin or restaurant)
+curl -X PATCH "http://localhost:4000/orders/abc123/status?region=eg" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <ADMIN_JWT>" \
+  -H "region: eg" \
+  -d '{"status": "accepted"}'
+
+# Cancel Order (admin)
+curl -X PATCH "http://localhost:4000/admin/orders/abc123/status?region=eg" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <ADMIN_JWT>" \
+  -H "region: eg" \
+  -d '{"status": "cancelled"}'

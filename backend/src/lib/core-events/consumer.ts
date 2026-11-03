@@ -1,25 +1,10 @@
-import {IMessageBroker, ConsumeMessage} from "../../pkg/messaging/message-broker.interface";
+import {ConsumeMessage, IMessageBroker} from "../../pkg/messaging/message-broker.interface";
 import {env} from "../config/env";
 import {logger} from "../logger/logger";
 import {cacheProvider} from "../cache/init";
-import {CoreEventEnvelope, CoreEventHandler} from "./types";
+import {CoreEventHandler, CoreEventEnvelope} from "./types";
 
 const DEDUPE_TTL_SEC = 24 * 60 * 60;
-
-const handlers = new Map<string, CoreEventHandler>();
-
-
-// registers a function to handle a specific event type, such as branch.updated
-export function registerHandler(eventType: string, handler: CoreEventHandler) {
-    if (handlers.has(eventType)) {
-        throw new Error(`Handler already registered for ${eventType}`);
-    }
-    handlers.set(eventType, handler);
-}
-
-export function listRegisteredHandlers(): string[] {
-    return Array.from(handlers.keys());
-}
 
 const topology = {
     exchange: env.rabbit.exchange,
@@ -30,59 +15,60 @@ const topology = {
     prefetch: env.rabbit.prefetch,
 };
 
-export async function startCoreEventsConsumer(broker: IMessageBroker): Promise<void> {
-    await broker.declareTopology(topology);
-    await broker.consume(topology, handleMessage);
+// Consume core-service events, skip duplicates, then call the matching handler.
+export async function startCoreEventsConsumer(broker: IMessageBroker, handlers: Map<string, CoreEventHandler>): Promise<void> {
+    await broker.consume(topology, async (msg: ConsumeMessage) => {
+        let event: CoreEventEnvelope;
+        try {
+            event = JSON.parse(msg.body.toString("utf8")) as CoreEventEnvelope;
+        } catch {
+            msg.nack(false);
+            return;
+        }
+
+        if (!event.eventId || !event.eventType) {
+            msg.nack(false);
+            return;
+        }
+
+        // Dedupe marker is claimed up front to collapse bursts of identical
+        // deliveries, but on REDelivery we still run the handler: all
+        // handlers are idempotent cache invalidations, and skipping would
+        // break at-least-once semantics (the cursor may have died before
+        // the handler completed).
+        const firstDelivery = await cacheProvider.trySet(`core-events:dedupe:${event.eventId}`, "1", DEDUPE_TTL_SEC);
+        if (!firstDelivery) {
+            logger.info("core-events: redelivery, re-processing idempotent handler", {
+                eventType: event.eventType,
+                eventId: event.eventId,
+            });
+        }
+
+        const handler = handlers.get(event.eventType);
+        if (!handler) {
+            logger.warn("core-events: no handler, acking", {
+                eventType: event.eventType,
+                eventId: event.eventId,
+            });
+            msg.ack();
+            return;
+        }
+
+        try {
+            await handler(event.payload);
+            msg.ack();
+        } catch (err) {
+            logger.error("core-events: handler failed, sending to DLQ", {
+                eventType: event.eventType,
+                eventId: event.eventId,
+                error: (err as Error).message,
+            });
+            msg.nack(false);
+        }
+    });
+
     logger.info("core-events consumer started", {
         queue: env.rabbit.queue,
         bindings: env.rabbit.bindings,
     });
-}
-
-async function handleMessage(msg: ConsumeMessage): Promise<void> {
-    const envelope = parseEnvelope(msg);
-    if (!envelope) return msg.nack(false);
-
-    
-    const fresh = await cacheProvider.trySet(
-        `core-events:dedupe:${envelope.eventId}`,
-        "1",
-        DEDUPE_TTL_SEC,
-    );
-    if (!fresh) {
-        msg.ack();
-        return;
-    }
-
-    const handler = handlers.get(envelope.eventType);
-    if (!handler) {
-        logger.warn("core-events: no handler, acking", {
-            eventType: envelope.eventType,
-            eventId: envelope.eventId,
-        });
-        msg.ack();
-        return;
-    }
-
-    try {
-        await handler(envelope.payload);
-        msg.ack();
-    } catch (err) {
-        logger.error("core-events: handler failed, sending to DLQ", {
-            eventType: envelope.eventType,
-            eventId: envelope.eventId,
-            error: (err as Error).message,
-        });
-        msg.nack(false);
-    }
-}
-
-function parseEnvelope(msg: ConsumeMessage): CoreEventEnvelope | null {
-    try {
-        const env = JSON.parse(msg.body.toString("utf8")) as CoreEventEnvelope;
-        if (!env.eventId || !env.eventType) return null;
-        return env;
-    } catch {
-        return null;
-    }
 }
