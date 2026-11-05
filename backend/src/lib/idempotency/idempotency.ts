@@ -10,8 +10,7 @@ interface IdempotencyOptions {
     strict?: boolean;
 }
 
-// Phase 0 implementation: Redis-only. DB-backed durable store is activated in
-// Phase 1 when the `idempotency_keys` table lands.
+
 export function idempotency(options: IdempotencyOptions = {}) {
     const {strict = false} = options;
 
