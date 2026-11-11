@@ -4,12 +4,14 @@ import {createApp} from "./app";
 import {env} from "./lib/config/env";
 import {logger} from "./lib/logger/logger";
 import {destroyAll, pingAll} from "./lib/knex/knex";
-import {messageBroker} from "./lib/messaging/init";
+import {messageBroker} from "./lib/messaging";
 import {startCoreEventsConsumer} from "./lib/core-events/consumer";
 import {attachWsServer} from "./lib/websocket/ws-server";
 import {container} from "./lib/di/container";
 import {TOKENS} from "./lib/di/tokens";
 import {registerOrderModuleCoreEventHandlers} from "./app/order/core-events.handlers";
+import type {CoreDataCacheService} from "./app/order/service/core-data-cache.service";
+import type {PermissionCacheService} from "./lib/rbac/permission-cache.service";
 
 const app = createApp();
 const server = http.createServer(app);
@@ -31,14 +33,14 @@ server.listen(env.port, async () => {
         logger.error("shard ping failed", {error: (err as Error).message});
     }
 
-    registerOrderModuleCoreEventHandlers();
+    registerOrderModuleCoreEventHandlers({
+        coreData: container.resolve<CoreDataCacheService>(TOKENS.CoreDataCacheService),
+        perms: container.resolve<PermissionCacheService>(TOKENS.PermissionCacheService),
+    });
 
-    messageBroker
-        .connect()
-        .then(() => startCoreEventsConsumer(messageBroker))
-        .catch((err) => {
-            logger.warn("rabbitmq not reachable at boot — will retry", {err});
-        });
+    startCoreEventsConsumer().catch((err) => {
+        logger.warn("rabbitmq not reachable at boot — will retry", {err});
+    });
 });
 
 async function shutdown() {

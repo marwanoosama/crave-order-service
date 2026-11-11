@@ -16,10 +16,6 @@ export class AgentController {
         @inject(TOKENS.AgentService) private readonly agent: AgentService,
     ) {}
 
-    /**
-     * Online and ping share the same write — UPSERT presence + extend TTL.
-     * Both /agents/presence/online and /agents/presence/ping route here.
-     */
     presenceUpsert = async (req: Request, res: Response, next: NextFunction) => {
         try {
             if (!req.region || req.region === "all") throw RegionNotResolvedError;
@@ -61,7 +57,6 @@ export class AgentController {
         }
     };
 
-    /** Body: { status: 'picked' | 'delivered' } */
     transition = async (req: Request, res: Response, next: NextFunction) => {
         try {
             if (!req.region || req.region === "all") throw RegionNotResolvedError;

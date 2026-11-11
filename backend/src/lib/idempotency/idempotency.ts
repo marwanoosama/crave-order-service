@@ -1,5 +1,5 @@
 import {Request, Response, NextFunction} from "express";
-import {ICacheProvider} from "../../pkg/cache/cache.interface";
+import {ICacheProvider} from "../cache/redis";
 import {container} from "../di/container";
 import {TOKENS} from "../di/tokens";
 import {toSeconds} from "../../pkg/utils/time";

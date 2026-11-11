@@ -1,6 +1,6 @@
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
-import {ICacheProvider} from "../../../pkg/cache/cache.interface";
+import {ICacheProvider} from "../../../lib/cache/redis";
 import {logger} from "../../../lib/logger/logger";
 import {toSeconds} from "../../../pkg/utils/time";
 import {
@@ -10,18 +10,6 @@ import {
     RestaurantSuspendedPayload,
 } from "../core-events.types";
 
-/**
- * Owns the order-service projection of core data cached in Redis.
- *
- * Responsibilities:
- *   - Cache writes / invalidations driven by inbound core-events.
- *   - Reject-orders flag for branches that go offline (read on placement).
- *
- * Read-throughs live in `lib/core-client/branch.client.ts` (`getBranch`,
- * `getBranchesByIds`, `getBranchProducts`) — they share the same Redis keys
- * this service writes to (`core:branch:<id>`, `core:branch:<bid>:product:<pid>`),
- * so an inbound event invalidates / merges the read-through cache entry too.
- */
 const PRODUCT_CACHE_TTL = toSeconds(1, "h");
 const BRANCH_REJECT_FLAG_TTL = toSeconds(7, "d");
 

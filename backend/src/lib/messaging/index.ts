@@ -4,12 +4,22 @@ import type {
     ChannelWrapper,
 } from "amqp-connection-manager";
 import type {ConfirmChannel, ConsumeMessage as AmqpConsumeMessage} from "amqplib";
-import type {
-    ConsumeMessage,
-    ConsumerOptions,
-    IMessageBroker,
-} from "../message-broker.interface";
-import type {RabbitMQConfig} from "./rabbitmq.types";
+import {env} from "../config/env";
+
+export interface RabbitMQConfig {
+    url: string;
+    reconnectInitialMs: number; // first backoff, doubles up to reconnectMaxMs
+    reconnectMaxMs: number;
+}
+
+export interface ConsumerOptions {
+    queue: string;
+    exchange: string;
+    bindingKeys: string[];
+    deadLetterExchange?: string;
+    deadLetterQueue?: string;
+    prefetch: number;
+}
 
 /**
  * Mental model
@@ -20,7 +30,7 @@ import type {RabbitMQConfig} from "./rabbitmq.types";
  *   - We keep ONE long-lived publisher channel and open extra channels for
  *     declaring topology and for consuming. One channel = one purpose.
  */
-export class RabbitMQClient implements IMessageBroker {
+export class RabbitMQClient {
     private connection: AmqpConnectionManager | null = null;
     private publishChannel: ChannelWrapper | null = null;
 
@@ -64,24 +74,19 @@ export class RabbitMQClient implements IMessageBroker {
         await ch.close();
     }
 
-    // Open a long-lived consumer channel.
-    // Everything inside `setup` re-runs on every reconnect, so topology and
-    // the consumer registration are restored automatically after broker restarts.
-    async consume(
-        opts: ConsumerOptions,
-        handler: (msg: ConsumeMessage) => Promise<void>,
-    ): Promise<void> {
+    async consume(opts: ConsumerOptions, onRaw: (raw: AmqpConsumeMessage, ack: () => void, reject: () => void) => Promise<void>,): Promise<void> {
         await this.connect();
         const ch = this.connection!.createChannel({
             json: false,
             setup: async (c: ConfirmChannel) => {
-                await assertTopology(c, opts);
+                await assertTopology(c, opts); // idempotent; restored on every reconnect
                 await c.prefetch(opts.prefetch); // max in-flight unacked messages
-                await c.consume(
-                    opts.queue,
-                    (raw) => handleMessage(c, raw, handler),
-                    {noAck: false}, // we'll ack/nack manually
-                );
+                await c.consume(opts.queue, (raw) => {
+                    if (raw === null) return; // null = consumer cancelled by the broker
+                    onRaw(raw, () => c.ack(raw), () => c.nack(raw, false, false)).catch(() => {
+                        c.nack(raw, false, false); // uncaught handler error → dead-letter queue
+                    });
+                }, {noAck: false}); // we ack/nack manually
             },
         });
         await ch.waitForConnect();
@@ -97,8 +102,6 @@ export class RabbitMQClient implements IMessageBroker {
         });
     }
 }
-
-// ---------- helpers ----------
 
 // "assert" = create if missing, else verify settings match. Always idempotent.
 async function assertTopology(ch: ConfirmChannel, opts: ConsumerOptions): Promise<void> {
@@ -120,26 +123,8 @@ async function assertTopology(ch: ConfirmChannel, opts: ConsumerOptions): Promis
     }
 }
 
-// Wrap the raw amqplib message in our broker-agnostic shape, run the handler,
-// ack on success / nack on throw.
-async function handleMessage(
-    ch: ConfirmChannel,
-    raw: AmqpConsumeMessage | null,
-    handler: (msg: ConsumeMessage) => Promise<void>,
-): Promise<void> {
-    if (!raw) return; // null = consumer cancelled by the broker
-
-    const msg: ConsumeMessage = {
-        routingKey: raw.fields.routingKey,
-        body: raw.content,
-        ack: () => ch.ack(raw),
-        nack: (requeue = false) => ch.nack(raw, false, requeue),
-    };
-
-    try {
-        await handler(msg);
-    } catch (err) {
-        console.error("[rabbitmq] handler threw:", (err as Error).message);
-        msg.nack(false); // false => no requeue, goes to DLQ if configured
-    }
-}
+export const messageBroker = new RabbitMQClient({
+    url: env.rabbit.url,
+    reconnectInitialMs: 500,
+    reconnectMaxMs: 15_000,
+});

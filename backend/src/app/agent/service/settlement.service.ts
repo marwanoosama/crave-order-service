@@ -5,7 +5,7 @@ import {TOKENS} from "../../../lib/di/tokens";
 import {db} from "../../../lib/knex/knex";
 import {env} from "../../../lib/config/env";
 import {logger} from "../../../lib/logger/logger";
-import {ICacheProvider} from "../../../pkg/cache/cache.interface";
+import {ICacheProvider} from "../../../lib/cache/redis";
 import {getBranch} from "../../../lib/core-client/branch.client";
 import {OrderEntity} from "../../order/entity/order.entity";
 import {OrderStatus, PaymentMethod} from "../../order/enums";

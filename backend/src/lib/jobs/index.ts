@@ -1,6 +1,52 @@
 import cron, {ScheduledTask} from "node-cron";
 import {logger} from "../logger/logger";
-import {listJobs} from "./job-registry";
+
+/**
+ * A scheduled background job. Anything added to the registry runs in the
+ * worker process at the given cron cadence.
+ *
+ * The handler receives nothing — if it needs context (region, batch size, etc.)
+ * it pulls from env or DI itself.
+ */
+export interface ScheduledJob {
+    /** Stable id used in logs and metrics. e.g. `assignment-tick:eg`. */
+    name: string;
+
+    /**
+     * Standard 5- or 6-field cron expression (node-cron syntax).
+     *   "*\/10 * * * * *" — every 10 seconds (6-field form)
+     *   "0 3 * * *"       — daily at 03:00 (5-field form)
+     */
+    cron: string;
+
+    /** Optional timezone (IANA, e.g. "Africa/Cairo"). Defaults to UTC. */
+    timezone?: string;
+
+    /** The work. May be sync or async; throws are caught + logged by the scheduler. */
+    handler: () => Promise<void> | void;
+}
+
+/**
+ * Module-level registry of scheduled jobs. Populated at module-load time by
+ * `register(...)` calls; consumed by `startAll()` at worker boot.
+ *
+ * Keep registrations side-effect-free at import time — the handler closures
+ * resolve their dependencies (DI, env) when CALLED, not when registered.
+ */
+const jobs: ScheduledJob[] = [];
+
+/** Add a job. Names must be unique; a duplicate name is a programmer error. */
+export function register(job: ScheduledJob): void {
+    if (jobs.some((j) => j.name === job.name)) {
+        throw new Error(`duplicate scheduled job: ${job.name}`);
+    }
+    jobs.push(job);
+}
+
+/** Snapshot used by the scheduler. */
+export function listJobs(): readonly ScheduledJob[] {
+    return jobs;
+}
 
 const tasks: ScheduledTask[] = [];
 

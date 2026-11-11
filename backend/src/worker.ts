@@ -1,35 +1,38 @@
 import "reflect-metadata";
 import http from "http";
+import {container} from "tsyringe";
 import {logger} from "./lib/logger/logger";
 import {destroyAll, pingAll} from "./lib/knex/knex";
-import {messageBroker} from "./lib/messaging/init";
+import {messageBroker} from "./lib/messaging";
 import {startCoreEventsConsumer} from "./lib/core-events/consumer";
 import {attachWsServer} from "./lib/websocket/ws-server";
-import {container} from "./lib/di/container";
 import {TOKENS} from "./lib/di/tokens";
-import {startAll, stopAll} from "./lib/jobs/scheduler";
+import {cacheProvider} from "./lib/cache/redis";
+import {CoreDataCacheService} from "./app/order/service/core-data-cache.service";
+import {PermissionCacheService} from "./lib/rbac/permission-cache.service";
+import {PresenceService} from "./app/agent/service/presence.service";
+import {startAll, stopAll} from "./lib/jobs";
 import {registerOrderModuleCoreEventHandlers} from "./app/order/core-events.handlers";
 import {registerAssignmentJobs} from "./app/assignment/jobs";
 import {registerOutboxDrainJobs} from "./lib/events/jobs";
 
-/**
- * Background worker process. All it does is boot the shared infra and hand
- * control to the cron scheduler. Adding a new background job means: create
- * a `register({...})` call somewhere and import it here. No other wiring.
- */
-
-// Socket.io needs an http.Server to attach to even if we don't listen on a
-// real port. Bind to 0 → ephemeral port; the redis adapter does the real
-// fan-out so this server never receives an HTTP request.
 const noopServer = http.createServer();
 const io = attachWsServer(noopServer);
-container.registerInstance(TOKENS.WsServer, io);
 
-// ── Job registrations ───────────────────────────────────────────────────
-registerAssignmentJobs();
+container.registerInstance(TOKENS.WsServer, io);
+container.registerInstance(TOKENS.CacheProvider, cacheProvider);
+
+registerOrderModuleCoreEventHandlers({
+    coreData: new CoreDataCacheService(cacheProvider),
+    perms: new PermissionCacheService(),
+});
+
+registerAssignmentJobs({
+    cache: cacheProvider,
+    presence: new PresenceService(cacheProvider),
+});
+
 registerOutboxDrainJobs();
-// registerOrderArchiveJobs
-// (Future jobs land here: payouts sweep, archival, presence GC, etc.)
 
 async function main() {
     noopServer.listen(0);
@@ -40,11 +43,8 @@ async function main() {
         else logger.warn("worker shard unreachable", {region: r.region, cluster: r.cluster, error: r.error});
     }
 
-    registerOrderModuleCoreEventHandlers();
-    messageBroker
-        .connect()
-        .then(() => startCoreEventsConsumer(messageBroker))
-        .catch((err) => logger.warn("worker rabbitmq not reachable at boot", {err}));
+    // starts a consumer that waits for new messages sent by the producer, then for each message it dedupes it first (skips if this eventId already ran), executes what should be executed using the handler looked up by the event's type, and confirms it when done — or sends it to the DLQ if it's garbage or the handler fails.
+    startCoreEventsConsumer().catch((err) => logger.warn("worker rabbitmq not reachable at boot", {err}));
 
     startAll();
 }

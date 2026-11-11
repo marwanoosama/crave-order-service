@@ -20,6 +20,7 @@ export class PermissionCacheService {
     private cache: Map<string, {permissions: string[]; cachedAt: number}> = new Map();
     private readonly TTL = toMs(1, "h");
 
+    // get permissions for a certain role
     getPermissions = async (roleName: string): Promise<string[]> => {
         const cached = this.cache.get(roleName);
         if (cached && Date.now() - cached.cachedAt < this.TTL) {

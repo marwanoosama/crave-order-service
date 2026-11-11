@@ -1,7 +1,7 @@
-import {register} from "../jobs/job-registry";
+import {register} from "../jobs";
 import {env} from "../config/env";
 import {logger} from "../logger/logger";
-import {messageBroker} from "../messaging/init";
+import {messageBroker} from "../messaging";
 import {drainOutboxForRegion} from "./outbox-drain";
 
 /**

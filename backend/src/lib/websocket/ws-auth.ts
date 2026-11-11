@@ -1,13 +1,10 @@
+import {AppError} from "../error/AppError";
 import type {IncomingMessage} from "http";
 import {verifyAccessToken, JWTPayload} from "../auth/jwt";
-import {WsNoTokenError} from "./errors";
 
-/**
- * Token sources, in order:
- *   1. `auth.token`           - native/mobile clients pass it via io(url, {auth:{token}})
- *   2. `access_token` cookie  - browser sessions reuse the HTTP login cookie
- * Query-string tokens are intentionally NOT supported (they leak into logs).
- */
+export const WsNoTokenError = new AppError("No token provided", 401);
+
+/* extract access token to attach to socket.io connection */
 export function authenticateHandshake(handshake: {
     auth?: {token?: string};
     headers: IncomingMessage["headers"];
@@ -20,7 +17,7 @@ export function authenticateHandshake(handshake: {
     return verifyAccessToken(token);
 }
 
-/** Channels (socket.io rooms) the user is allowed to join. */
+/* channels (socket.io rooms) the user is allowed to join */
 export function permittedChannels(user: JWTPayload): Set<string> {
     const allowed = new Set<string>([`customer:${user.userId}`]);
     if (user.role === "restaurant_user" && user.restaurantId) {

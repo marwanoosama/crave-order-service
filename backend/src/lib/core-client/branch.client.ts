@@ -1,7 +1,7 @@
 import {coreClient} from "./core-client";
-import {container} from "../di/container";
+import {container} from "tsyringe";
 import {TOKENS} from "../di/tokens";
-import {ICacheProvider} from "../../pkg/cache/cache.interface";
+import {ICacheProvider} from "../cache/redis";
 import {toSeconds} from "../../pkg/utils/time";
 import {logger} from "../logger/logger";
 import {

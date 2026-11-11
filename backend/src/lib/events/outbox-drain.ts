@@ -1,7 +1,7 @@
 import {db} from "../knex/knex";
 import {env} from "../config/env";
 import {logger} from "../logger/logger";
-import {messageBroker} from "../messaging/init";
+import {messageBroker} from "../messaging";
 import {claimBatch, markDispatched, markFailed} from "./outbox.repo";
 
 /**

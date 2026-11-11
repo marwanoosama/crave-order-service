@@ -4,7 +4,7 @@ import {createAdapter} from "@socket.io/redis-adapter";
 import {toMs} from "../../pkg/utils/time";
 import {env} from "../config/env";
 import {logger} from "../logger/logger";
-import {redisClient} from "../cache/init";
+import {redisClient} from "../cache/redis";
 import {authenticateHandshake, permittedChannels} from "./ws-auth";
 
 /**
@@ -17,12 +17,13 @@ import {authenticateHandshake, permittedChannels} from "./ws-auth";
  */
 export function attachWsServer(httpServer: HttpServer): IOServer {
     const io = new IOServer(httpServer, {
-        path: "/ws",
+        path: "/ws", // clients connect through this endpoint
         serveClient: false,
         pingInterval: toMs(env.ws.heartbeatSec,'s'),
     });
     io.adapter(createAdapter(redisClient, redisClient.duplicate()));
 
+    // this middleware runs when a new client attempts to connect and stores the authenticated user and channels he is allowed to join in the socket
     io.use((socket, next) => {
         try {
             const user = authenticateHandshake(socket.handshake);

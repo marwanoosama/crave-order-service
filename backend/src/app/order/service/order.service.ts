@@ -5,7 +5,7 @@ import {container} from "../../../lib/di/container";
 import {TOKENS} from "../../../lib/di/tokens";
 import {db} from "../../../lib/knex/knex";
 import {assertRegion} from "../../../lib/sharding/regions";
-import {ICacheProvider} from "../../../pkg/cache/cache.interface";
+import {ICacheProvider} from "../../../lib/cache/redis";
 import {logger} from "../../../lib/logger/logger";
 import {UnAuthorisedError} from "../../../lib/auth/errors";
 import {sumMinor, multiplyMinor} from "../../../pkg/utils/money";
@@ -54,7 +54,7 @@ import {
 import {insertOutboxEvent} from "../../../lib/events/outbox.repo";
 import {EVENT_TYPES} from "../../../lib/events/event-types";
 
-const SERVICE_FEE_MINOR = 1000; // 10.00 EGP / SAR — paid to the platform.
+const SERVICE_FEE_MINOR = 1000;
 
 const RESTAURANT_ORDERS_CACHE_PREFIX = (region: string, branchId: number) =>
     `${region}:GET:/api/restaurant/orders?branchId=${branchId}`;
@@ -67,45 +67,40 @@ export class OrderService {
         @inject(TOKENS.PaymentService) private readonly paymentService: PaymentService,
     ) {}
 
-    // Lazy access — WsServer is registered after the DI container builds the
-    // routes (it depends on the http.Server, which is created in server.ts).
-    private get io(): IoServer {
-        return container.resolve<IoServer>(TOKENS.WsServer);
-    }
+    // lazy access because http (needed by ws) is created after di container has already built the routes
+    private get io(): IoServer {return container.resolve<IoServer>(TOKENS.WsServer);}
 
     async placeOrder(actor: ActorContext, body: CreateOrderRequestDTO, region: string | undefined, correlationId?: string): Promise<OrderResponseDTO> {
-        // 1. Branch metadata (drives shard region + accept flag + currency + delivery fee)
+        // branch metadata
         const branch = await getBranch(body.branchId, correlationId);
         if (!branch.isActive || !branch.acceptOrders) throw BranchNotAcceptingOrdersError;
         if (branch.restaurantStatus !== "active") throw BranchNotAcceptingOrdersError;
         if (await this.coreData.isBranchRejectingOrders(body.branchId)) throw BranchNotAcceptingOrdersError;
 
-        // Branch country may arrive uppercase ("EG"); shard router is lowercase.
+        // branch country
         const resolvedRegion = assertRegion(region ?? branch.region);
 
-        // Online gateway is enabled per-region (env-driven). Anything else falls
-        // back to COD-only — fail fast before we touch stock.
+        // check if online payment is available this region
         if (body.paymentMethod === PaymentMethod.ONLINE && !env.payments.onlineRegions.has(resolvedRegion)) {
             throw OnlinePaymentNotAvailableError;
         }
 
-        // 2. Address (snapshot lat/lng + flat text)
+        // customer address (lng, lat)
         const address = await getCustomerAddress(body.customerAddressId, correlationId);
         if (Number(address.userId) !== Number(actor.userId)) throw UnAuthorisedError;
 
-        // 3. Products (single batch)
+        // products
         const productIds = body.items.map((i) => i.productId);
         const products = await getBranchProducts(body.branchId, productIds, correlationId);
         const orderLineDrafts = this.buildOrderLineDrafts(body.items, products);
 
-        // 4. Money
+        // money
         const subtotal = sumMinor(orderLineDrafts.map((l) => l.lineTotal));
         const total = subtotal + branch.deliveryFee + SERVICE_FEE_MINOR;
 
-        // 5. Reserve stock FIRST. If anything below this point fails, we MUST release.
-        // Reserve is atomic on the core side (FOR UPDATE + 409 on underflow) so we
-        // can't oversell. Using the publicId as the idempotency key means a retry
-        // never double-reserves.
+
+        // reserve stock before proceeding, if anything fails, we release the reserved
+        // coreReserveStock() is atomic in the core microservice (for update, row level locking) to avoid race condition
         const publicId = randomUUID();
         await coreReserveStock(
             body.branchId,
@@ -114,7 +109,7 @@ export class OrderService {
             correlationId,
         );
 
-        // 6. Trx on the branch's region
+
         const conn = db(resolvedRegion);
         const trx = await conn.transaction();
         let order: OrderEntity;
@@ -157,9 +152,7 @@ export class OrderService {
                 trx,
             );
 
-            // Transactional outbox — only COD lands as `placed` here.
-            // ONLINE orders start as `pending_payment` and emit `order.placed`
-            // from the Kashier webhook after capture (see kashier-webhook.service.ts).
+            // transactional outbox pattern
             if (order.status === OrderStatus.PLACED) {
                 await insertOutboxEvent(trx, {
                     aggregateType: "order",
@@ -176,8 +169,7 @@ export class OrderService {
             throw err;
         }
 
-        // 7. Online → init Kashier session. Rollback on failure (void order +
-        // release stock) so the customer is never stranded.
+        // payment. rollback on failure (void order and release stock)
         let paymentInfo;
         if (body.paymentMethod === PaymentMethod.ONLINE) {
             try {
@@ -196,12 +188,12 @@ export class OrderService {
             }
         }
 
-        // 8. Cache + WS
+        // invalidate the cached response that gets all branch's orders
         await this.invalidateBranchOrdersCache(resolvedRegion, branch.id);
+
+        // sends a ws event to everyone connected to the room branch:branchId
         if (body.paymentMethod === PaymentMethod.COD) {
-            this.io
-                .to(`branch:${branch.id}`)
-                .emit("order.created", OrderSummaryResponseDTO.from(order, items.length));
+            this.io.to(`branch:${branch.id}`).emit("order.created", OrderSummaryResponseDTO.from(order, items.length));
         }
 
         return OrderResponseDTO.from(order, items, paymentInfo);
@@ -316,7 +308,7 @@ export class OrderService {
         return payload;
     }
 
-    // ── private helpers ──────────────────────────────────────────────────
+    /**Helpers*/
     private buildOrderLineDrafts(
         requested: Array<{productId: number; quantity: number}>,
         products: CoreBranchProduct[],
