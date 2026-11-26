@@ -5,7 +5,7 @@ meta {
 }
 
 patch {
-  url: {{coreBase}}/branches/1/status
+  url: {{coreBase}}/branches/{{branchId}}/status
   body: json
   auth: none
 }
@@ -16,6 +16,6 @@ headers {
 
 body:json {
   {
-    "status": "active"
+    "status": "{{branchStatus}}"
   }
 }

@@ -5,19 +5,19 @@ meta {
 }
 
 patch {
-  url: {{orderBase}}/restaurants/1/branches/1/orders/{{orderId}}/status
+  url: {{orderBase}}/restaurants/{{restaurantId}}/branches/{{branchId}}/orders/{{orderId}}/status
   body: json
   auth: none
 }
 
 headers {
-  Cookie: access_token={{staffToken}}
+  Cookie: access_token={{staff1Token}}
   X-Region: {{region}}
-  Idempotency-Key: brave-status-2
+  Idempotency-Key: {{statusPreparingIdempotencyKey}}
 }
 
 body:json {
   {
-    "status": "preparing"
+    "status": "{{preparingStatus}}"
   }
 }

@@ -5,17 +5,17 @@ meta {
 }
 
 patch {
-  url: {{coreBase}}/customer/addresses/1
+  url: {{coreBase}}/customer/addresses/{{customerAddressId}}
   body: json
   auth: none
 }
 
 headers {
-  Cookie: access_token={{customerToken}}
+  Cookie: access_token={{customer1Token}}
 }
 
 body:json {
   {
-    "label": "Home (renamed)"
+    "label": "{{updatedAddressLabel}}"
   }
 }

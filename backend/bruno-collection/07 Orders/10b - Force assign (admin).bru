@@ -13,11 +13,11 @@ post {
 headers {
   Cookie: access_token={{adminToken}}
   X-Region: {{region}}
-  Idempotency-Key: brave-assign-1
+  Idempotency-Key: {{assignIdempotencyKey}}
 }
 
 body:json {
   {
-    "agentId": 13
+    "agentId": {{forceAssignAgentId}}
   }
 }

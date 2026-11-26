@@ -1,6 +1,7 @@
 # Crave — Bruno Endpoint Collection
 
-Full Postman-style collection covering both microservices:
+Full Postman-style collection covering the core and order services. Analytics has its own
+collection in `crave-analytics-service/backend/bruno-collection`:
 
 | Service | Env var | Local value |
 |---|---|---|
@@ -10,15 +11,18 @@ Full Postman-style collection covering both microservices:
 ## How to use
 
 1. Open Bruno → **Import** → **Open Collection** → select this folder (`bruno-collection`).
-2. Select the **Local** environment (dropdown at the top).
-3. Run a **Login** request in `01 Auth` for the role you want to test. Each login
-   stores its `access_token` in an env var (e.g. `customerToken`, `ownerToken`).
-   All other requests send `Cookie: access_token={{<roleToken>}}` automatically.
+2. Select the **Local** environment (dropdown at the top). It lives in
+   `environments/Local.bru` and defines all service URLs, test IDs, request payloads,
+   credentials, idempotency keys, and actor token slots. Tokens are pre-filled with
+   30-day dev JWTs — just press Send.
+3. Run the `01 Auth` login requests for the actors you need. Each login stores both an
+   actor-specific JWT (for example `customer1Token`, `owner1Token`, `agent1Token`) and
+   refresh token. The collection includes every seeded actor: admin, owners 1–3, managers 1–2,
+   staff 1–2, customers 1–3, and agents 1–3.
 4. Some requests (e.g. create/assign) save returned ids into env vars:
    creating an order stores `orderId` (its public id) used by the
    status-transition / agent / webhook requests.
-5. Internal API requests use the
-   `api-key: dev-internal-api-key` header (service-to-service).
+5. Internal API requests use `{{internalApiKey}}`; the negative request uses `{{badApiKey}}`.
 
 ## Order status transition flow (exercise `07 Orders` in this order)
 
@@ -44,3 +48,17 @@ dashboard webhooks or send your own signed payload.
   request Headers if you want a fresh response.
 - `region` env var (values `eg` / `ksa`) sets the `X-Region` shard header used
   by all order-service requests.
+
+## WebSocket / Socket.IO
+
+The order service exposes Socket.IO on `{{wsUrl}}` (`/ws` with the Engine.IO query). Bruno's
+WebSocket client is a raw WebSocket client, so the requests in `11 WebSocket` use the Socket.IO
+wire packets directly:
+
+1. Connect and wait for the Engine.IO `0` packet.
+2. Send `40` to open the Socket.IO namespace.
+3. After the server's `hello` event, send the saved `subscribe` messages.
+
+The collection covers customer, restaurant-member, delivery-agent, and admin-alert rooms. The
+implemented server events are `hello`, `subscribed`, `order.created`, `order.status_changed`,
+`task.offered`, `task.assigned`, `offer.cancelled`, and `assignment.exhausted`.

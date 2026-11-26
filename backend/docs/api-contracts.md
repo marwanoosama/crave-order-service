@@ -603,6 +603,7 @@ Server emits with `io.to("<room>").emit("<event.name>", payload)`. Heartbeat is 
 | `restaurant:<restId>`     | restaurant owner                          | `order.created`, `order.cancelled`                                                                                                                                    |
 | `branch:<branchId>`       | restaurant manager / staff (member)       | `order.created`, `order.status_changed`, `order.cancelled`, `delivery.assigned`                                                                                       |
 | `agent:<agentId>`         | the agent                                 | `task.assigned`, `task.cancelled`                                                                                                                                     |
+| `admin:alerts`             | platform administrator                    | `assignment.exhausted`                                                                                                                                                 |
 
 Payload shapes for events follow the response DTOs already defined (e.g. `order.status_changed.payload === { orderPublicId, status, updatedAt }`).
 

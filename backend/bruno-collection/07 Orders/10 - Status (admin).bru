@@ -13,12 +13,12 @@ patch {
 headers {
   Cookie: access_token={{adminToken}}
   X-Region: {{region}}
-  Idempotency-Key: brave-status-admin-1
+  Idempotency-Key: {{statusAdminIdempotencyKey}}
 }
 
 body:json {
   {
-    "status": "cancelled",
-    "reason": "admin cancel"
+    "status": "{{cancelledStatus}}",
+    "reason": "{{adminCancelReason}}"
   }
 }

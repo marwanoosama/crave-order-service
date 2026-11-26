@@ -5,11 +5,11 @@ meta {
 }
 
 delete {
-  url: {{coreBase}}/customer/addresses/6
+  url: {{coreBase}}/customer/addresses/{{addressIdToDelete}}
   body: none
   auth: none
 }
 
 headers {
-  Cookie: access_token={{customerToken}}
+  Cookie: access_token={{customer1Token}}
 }

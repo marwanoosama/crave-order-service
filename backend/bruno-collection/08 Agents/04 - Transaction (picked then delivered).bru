@@ -1,5 +1,5 @@
 meta {
-  name: Status (picked/delivered)
+  name: Status to picked (agent)
   type: http
   seq: 4
 }
@@ -11,13 +11,13 @@ patch {
 }
 
 headers {
-  Cookie: access_token={{agentToken}}
+  Cookie: access_token={{agent1Token}}
   X-Region: {{region}}
-  Idempotency-Key: brave-agent-status-1
+  Idempotency-Key: {{agentStatusIdempotencyKey}}
 }
 
 body:json {
   {
-    "status": "picked"
+    "status": "{{pickedStatus}}"
   }
 }

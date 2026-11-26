@@ -11,14 +11,14 @@ patch {
 }
 
 headers {
-  Cookie: access_token={{customerToken}}
+  Cookie: access_token={{customer1Token}}
   X-Region: {{region}}
-  Idempotency-Key: brave-order-cancel-1
+  Idempotency-Key: {{cancelOrderIdempotencyKey}}
 }
 
 body:json {
   {
-    "status": "cancelled",
-    "reason": "changed my mind"
+    "status": "{{cancelledStatus}}",
+    "reason": "{{cancelReason}}"
   }
 }

@@ -5,12 +5,12 @@ meta {
 }
 
 get {
-  url: {{orderBase}}/restaurants/1/payments/1
+  url: {{orderBase}}/restaurants/{{restaurantId}}/payments/{{paymentId}}
   body: none
   auth: none
 }
 
 headers {
-  Cookie: access_token={{ownerToken}}
+  Cookie: access_token={{owner1Token}}
   X-Region: {{region}}
 }

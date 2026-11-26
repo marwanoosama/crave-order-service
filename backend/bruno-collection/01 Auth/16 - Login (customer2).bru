@@ -1,0 +1,26 @@
+meta {
+  name: Login (customer2)
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{coreBase}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{customer2Email}}",
+    "password": "{{testPassword}}"
+  }
+}
+
+script:post-response {
+  const {data} = res.getBody();
+  if (data && data.accessToken) {
+    bru.setEnvVar("customer2Token", data.accessToken);
+    bru.setEnvVar("customer2Refresh", data.refreshToken || "");
+  }
+}

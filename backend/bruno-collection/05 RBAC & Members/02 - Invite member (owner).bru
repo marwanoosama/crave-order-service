@@ -5,23 +5,23 @@ meta {
 }
 
 post {
-  url: {{coreBase}}/restaurants/1/members
+  url: {{coreBase}}/restaurants/{{restaurantId}}/members
   body: json
   auth: none
 }
 
 headers {
-  Cookie: access_token={{ownerToken}}
+  Cookie: access_token={{owner1Token}}
 }
 
 body:json {
   {
-    "email": "invited.bruno@crave.io",
-    "name": "Invited Staff",
-    "phoneNumber": "01099999993",
-    "role": "staff",
+    "email": "{{memberEmail}}",
+    "name": "{{memberName}}",
+    "phoneNumber": "{{memberPhone}}",
+    "role": "{{memberRole}}",
     "branchIds": [
-      1
+      {{branchId}}
     ]
   }
 }

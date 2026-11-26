@@ -5,18 +5,18 @@ meta {
 }
 
 patch {
-  url: {{coreBase}}/products/2?branchId=1
+  url: {{coreBase}}/products/{{productId}}?branchId={{branchId}}
   body: json
   auth: none
 }
 
 headers {
-  Cookie: access_token={{staffToken}}
+  Cookie: access_token={{staff1Token}}
 }
 
 body:json {
   {
-    "stock": 100,
-    "price": 55
+    "stock": {{updatedProductStock}},
+    "price": {{updatedProductPrice}}
   }
 }

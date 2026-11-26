@@ -1,0 +1,26 @@
+meta {
+  name: Login (manager2)
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{coreBase}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{manager2Email}}",
+    "password": "{{testPassword}}"
+  }
+}
+
+script:post-response {
+  const {data} = res.getBody();
+  if (data && data.accessToken) {
+    bru.setEnvVar("manager2Token", data.accessToken);
+    bru.setEnvVar("manager2Refresh", data.refreshToken || "");
+  }
+}

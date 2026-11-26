@@ -11,30 +11,32 @@ post {
 }
 
 headers {
-  Cookie: access_token={{customerToken}}
+  Cookie: access_token={{customer1Token}}
   X-Region: {{region}}
-  Idempotency-Key: brave-order-online-3
+  Idempotency-Key: {{onlineOrderIdempotencyKey}}
 }
 
 body:json {
   {
-    "branchId": 1,
-    "customerAddressId": 1,
-    "paymentMethod": "online",
+    "branchId": {{branchId}},
+    "customerAddressId": {{customerAddressId}},
+    "paymentMethod": "{{onlinePaymentMethod}}",
     "items": [
       {
-        "productId": 3,
-        "quantity": 1
+        "productId": {{onlineProductId}},
+        "quantity": {{orderQuantity}}
       }
     ]
   }
 }
 
-vars:pre-request {
-  region: eg
-}
-
 script:post-response {
   const {data} = res.getBody();
-    if (data && data.publicId) { bru.setEnvVar("onlineOrderId", data.publicId); }
+  if (data && data.publicId) {
+    bru.setEnvVar("onlineOrderId", data.publicId);
+    bru.setEnvVar("onlineOrderTotalMinor", String(data.total));
+    if (data.paymentInfo && data.paymentInfo.redirectUrl) {
+      bru.setEnvVar("kashierRedirectUrl", data.paymentInfo.redirectUrl);
+    }
+  }
 }

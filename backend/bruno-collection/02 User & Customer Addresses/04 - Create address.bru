@@ -11,15 +11,15 @@ post {
 }
 
 headers {
-  Cookie: access_token={{customerToken}}
+  Cookie: access_token={{customer1Token}}
 }
 
 body:json {
   {
-    "label": "Home",
-    "addressText": "12 Abbas El Akkad St, Nasr City",
-    "lat": 30.0566,
-    "lng": 31.3302,
-    "isDefault": false
+    "label": "{{addressLabel}}",
+    "addressText": "{{addressText}}",
+    "lat": {{addressLat}},
+    "lng": {{addressLng}},
+    "isDefault": {{addressIsDefault}}
   }
 }

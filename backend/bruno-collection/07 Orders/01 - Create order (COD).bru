@@ -11,28 +11,23 @@ post {
 }
 
 headers {
-  Cookie: access_token={{customerToken}}
+  Cookie: access_token={{customer1Token}}
   X-Region: {{region}}
-  Idempotency-Key: brave-order-cod-1
+  Idempotency-Key: {{codOrderIdempotencyKey}}
 }
 
 body:json {
   {
-    "branchId": 1,
-    "customerAddressId": 1,
-    "paymentMethod": "online",
+    "branchId": {{branchId}},
+    "customerAddressId": {{customerAddressId}},
+    "paymentMethod": "{{codPaymentMethod}}",
     "items": [
       {
-        "productId": 2,
-        "quantity": 1
+        "productId": {{productId}},
+        "quantity": {{orderQuantity}}
       }
     ]
   }
-}
-
-vars:pre-request {
-  orderBase: http://localhost:4000/api
-  region: eg
 }
 
 script:post-response {

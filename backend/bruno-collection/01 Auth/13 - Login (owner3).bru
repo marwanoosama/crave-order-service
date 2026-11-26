@@ -1,0 +1,26 @@
+meta {
+  name: Login (owner3)
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{coreBase}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{owner3Email}}",
+    "password": "{{testPassword}}"
+  }
+}
+
+script:post-response {
+  const {data} = res.getBody();
+  if (data && data.accessToken) {
+    bru.setEnvVar("owner3Token", data.accessToken);
+    bru.setEnvVar("owner3Refresh", data.refreshToken || "");
+  }
+}

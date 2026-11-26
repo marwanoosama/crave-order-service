@@ -5,7 +5,7 @@ meta {
 }
 
 post {
-  url: {{orderBase}}/admin/restaurants/1/payouts
+  url: {{orderBase}}/admin/restaurants/{{restaurantId}}/payouts
   body: json
   auth: none
 }
@@ -13,15 +13,15 @@ post {
 headers {
   Cookie: access_token={{adminToken}}
   X-Region: {{region}}
-  Idempotency-Key: brave-payout-1
+  Idempotency-Key: {{payoutIdempotencyKey}}
 }
 
 body:json {
   {
-    "restaurantId": 1,
-    "amount": 1000,
-    "currency": "EGP",
-    "providerReferenceId": "brave-payout-1",
-    "note": "manual transfer"
+    "restaurantId": {{restaurantId}},
+    "amount": {{payoutAmount}},
+    "currency": "{{payoutCurrency}}",
+    "providerReferenceId": "{{payoutIdempotencyKey}}",
+    "note": "{{payoutNote}}"
   }
 }

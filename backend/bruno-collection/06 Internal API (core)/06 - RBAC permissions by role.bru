@@ -5,11 +5,11 @@ meta {
 }
 
 get {
-  url: {{coreBase}}/internal/rbac/permissions?role=staff
+  url: {{coreBase}}/internal/rbac/permissions?role={{internalRole}}
   body: none
   auth: none
 }
 
 headers {
-  api-key: dev-internal-api-key
+  api-key: {{internalApiKey}}
 }

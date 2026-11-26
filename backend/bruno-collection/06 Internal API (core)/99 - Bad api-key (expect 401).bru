@@ -5,11 +5,11 @@ meta {
 }
 
 get {
-  url: {{coreBase}}/internal/branches/1
+  url: {{coreBase}}/internal/branches/{{branchId}}
   body: none
   auth: none
 }
 
 headers {
-  api-key: wrong
+  api-key: {{badApiKey}}
 }

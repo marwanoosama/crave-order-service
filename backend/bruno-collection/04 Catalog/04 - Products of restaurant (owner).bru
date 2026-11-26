@@ -5,11 +5,11 @@ meta {
 }
 
 get {
-  url: {{coreBase}}/restaurants/1/products?branchId=1
+  url: {{coreBase}}/restaurants/{{restaurantId}}/products?branchId={{branchId}}
   body: none
   auth: none
 }
 
 headers {
-  Cookie: access_token={{ownerToken}}
+  Cookie: access_token={{owner1Token}}
 }

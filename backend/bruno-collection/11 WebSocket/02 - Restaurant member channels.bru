@@ -1,0 +1,50 @@
+meta {
+  name: Restaurant member channels (Socket.IO)
+  type: ws
+  seq: 2
+}
+
+ws {
+  url: {{wsUrl}}
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{manager1Token}}
+}
+
+body:ws {
+  name: 1 - open namespace
+  content: '''
+    40
+  '''
+}
+
+body:ws {
+  name: 2 - subscribe restaurant room
+  content: '''
+    420["subscribe","restaurant:{{restaurantId}}"]
+  '''
+}
+
+body:ws {
+  name: 3 - subscribe branch room
+  content: '''
+    421["subscribe","branch:{{branchId}}"]
+  '''
+}
+
+body:ws {
+  name: 4 - unsubscribe branch room
+  content: '''
+    422["unsubscribe","branch:{{branchId}}"]
+  '''
+}
+
+docs {
+  # Permitted member rooms
+
+  Use the manager1 JWT for restaurant 1 / branch 1. The server emits `hello`, then sends
+  `subscribed` after each successful subscription. The branch room receives `order.created`
+  and `order.status_changed` events from the order service.
+}

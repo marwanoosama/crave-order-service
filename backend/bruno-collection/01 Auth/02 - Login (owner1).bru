@@ -12,14 +12,16 @@ post {
 
 body:json {
   {
-    "email": "owner1@crave.io",
-    "password": "Password123!"
+    "email": "{{owner1Email}}",
+    "password": "{{testPassword}}"
   }
 }
 
 script:post-response {
   const {data} = res.getBody();
     if (data && data.accessToken) {
+      bru.setEnvVar("owner1Token", data.accessToken);
+      bru.setEnvVar("owner1Refresh", data.refreshToken || "");
       bru.setEnvVar("ownerToken", data.accessToken);
       bru.setEnvVar("ownerRefresh", data.refreshToken || "");
     }

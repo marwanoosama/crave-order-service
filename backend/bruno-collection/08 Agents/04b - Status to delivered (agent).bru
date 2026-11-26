@@ -1,0 +1,23 @@
+meta {
+  name: Status to delivered (agent)
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{orderBase}}/agents/orders/{{orderId}}/status
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{agent1Token}}
+  X-Region: {{region}}
+  Idempotency-Key: {{agentDeliveredIdempotencyKey}}
+}
+
+body:json {
+  {
+    "status": "{{deliveredStatus}}"
+  }
+}

@@ -5,18 +5,18 @@ meta {
 }
 
 patch {
-  url: {{coreBase}}/branches/1
+  url: {{coreBase}}/branches/{{branchId}}
   body: json
   auth: none
 }
 
 headers {
-  Cookie: access_token={{ownerToken}}
+  Cookie: access_token={{owner1Token}}
 }
 
 body:json {
   {
-    "label": "Nasr City",
-    "acceptOrders": true
+    "label": "{{updatedBranchLabel}}",
+    "acceptOrders": {{updatedBranchAcceptOrders}}
   }
 }

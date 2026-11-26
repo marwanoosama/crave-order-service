@@ -1,0 +1,42 @@
+meta {
+  name: Delivery agent channel (Socket.IO)
+  type: ws
+  seq: 3
+}
+
+ws {
+  url: {{wsUrl}}
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{agent1Token}}
+}
+
+body:ws {
+  name: 1 - open namespace
+  content: '''
+    40
+  '''
+}
+
+body:ws {
+  name: 2 - subscribe agent room
+  content: '''
+    420["subscribe","agent:{{agent1UserId}}"]
+  '''
+}
+
+body:ws {
+  name: 3 - unsubscribe agent room
+  content: '''
+    421["unsubscribe","agent:{{agent1UserId}}"]
+  '''
+}
+
+docs {
+  # Agent room
+
+  The agent room receives `task.offered`, `task.assigned`, and `offer.cancelled`.
+  Presence and accept/reject actions remain HTTP requests in `08 Agents`.
+}

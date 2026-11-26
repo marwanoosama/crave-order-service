@@ -5,11 +5,11 @@ meta {
 }
 
 get {
-  url: {{coreBase}}/user/internal/agents/12
+  url: {{coreBase}}/user/internal/agents/{{agent1UserId}}
   body: none
   auth: none
 }
 
 headers {
-  api-key: dev-internal-api-key
+  api-key: {{internalApiKey}}
 }

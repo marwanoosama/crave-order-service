@@ -5,11 +5,11 @@ meta {
 }
 
 get {
-  url: {{coreBase}}/internal/branches/1/products?ids=1,2
+  url: {{coreBase}}/internal/branches/{{branchId}}/products?ids={{internalProductIds}}
   body: none
   auth: none
 }
 
 headers {
-  api-key: dev-internal-api-key
+  api-key: {{internalApiKey}}
 }

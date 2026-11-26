@@ -1,0 +1,26 @@
+meta {
+  name: Login (agent3)
+  type: http
+  seq: 19
+}
+
+post {
+  url: {{coreBase}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{agent3Email}}",
+    "password": "{{testPassword}}"
+  }
+}
+
+script:post-response {
+  const {data} = res.getBody();
+  if (data && data.accessToken) {
+    bru.setEnvVar("agent3Token", data.accessToken);
+    bru.setEnvVar("agent3Refresh", data.refreshToken || "");
+  }
+}

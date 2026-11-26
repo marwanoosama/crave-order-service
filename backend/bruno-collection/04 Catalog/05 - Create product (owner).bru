@@ -5,20 +5,20 @@ meta {
 }
 
 post {
-  url: {{coreBase}}/restaurants/1/products
+  url: {{coreBase}}/restaurants/{{restaurantId}}/products
   body: json
   auth: none
 }
 
 headers {
-  Cookie: access_token={{ownerToken}}
+  Cookie: access_token={{owner1Token}}
 }
 
 body:json {
   {
-    "name": "Bruno Burger",
-    "description": "Smoke test burger",
-    "price": 75,
-    "imageUrl": "https://cdn.crave.io/p/bruno.png"
+    "name": "{{newProductName}}",
+    "description": "{{newProductDescription}}",
+    "price": {{newProductPrice}},
+    "imageUrl": "{{newProductImageUrl}}"
   }
 }

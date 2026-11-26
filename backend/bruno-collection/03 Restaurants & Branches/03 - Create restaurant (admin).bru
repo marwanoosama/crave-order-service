@@ -16,14 +16,14 @@ headers {
 
 body:json {
   {
-    "name": "Bruno Test Restaurant",
+    "name": "{{newRestaurantName}}",
     "owner": {
-      "email": "owner.bruno@crave.io",
-      "phone": "01099999992",
-      "name": "Bruno Owner",
-      "password": "Brunoowner123!"
+      "email": "{{newRestaurantOwnerEmail}}",
+      "phone": "{{newRestaurantOwnerPhone}}",
+      "name": "{{newRestaurantOwnerName}}",
+      "password": "{{newRestaurantOwnerPassword}}"
     },
-    "logoURL": "https://cdn.crave.io/logos/new.png",
-    "primaryCountry": "eg"
+    "logoURL": "{{newRestaurantLogoUrl}}",
+    "primaryCountry": "{{region}}"
   }
 }

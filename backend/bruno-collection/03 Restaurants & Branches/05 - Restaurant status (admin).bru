@@ -5,7 +5,7 @@ meta {
 }
 
 patch {
-  url: {{coreBase}}/restaurants/1/status
+  url: {{coreBase}}/restaurants/{{restaurantId}}/status
   body: json
   auth: none
 }
@@ -16,6 +16,6 @@ headers {
 
 body:json {
   {
-    "status": "active"
+    "status": "{{restaurantStatus}}"
   }
 }

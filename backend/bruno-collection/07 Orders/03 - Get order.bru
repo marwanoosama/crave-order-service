@@ -11,11 +11,6 @@ get {
 }
 
 headers {
-  Cookie: access_token={{customerToken}}
+  Cookie: access_token={{customer1Token}}
   X-Region: {{region}}
-}
-
-vars:pre-request {
-  region: eg
-  orderId: 1b993079-89af-43f0-a003-111668d12a1f
 }

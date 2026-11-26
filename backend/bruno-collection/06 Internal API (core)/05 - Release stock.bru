@@ -5,23 +5,23 @@ meta {
 }
 
 post {
-  url: {{coreBase}}/internal/branches/1/release-stock
+  url: {{coreBase}}/internal/branches/{{branchId}}/release-stock
   body: json
   auth: none
 }
 
 headers {
-  api-key: dev-internal-api-key
+  api-key: {{internalApiKey}}
 }
 
 body:json {
   {
     "items": [
       {
-        "productId": 1,
-        "quantity": 1
+        "productId": {{reserveProductId}},
+        "quantity": {{reserveQuantity}}
       }
     ],
-    "reservationId": 1
+    "reservationId": {{reservationId}}
   }
 }

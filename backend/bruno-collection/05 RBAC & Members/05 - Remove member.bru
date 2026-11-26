@@ -5,11 +5,11 @@ meta {
 }
 
 delete {
-  url: {{coreBase}}/restaurants/1/members/999
+  url: {{coreBase}}/restaurants/{{restaurantId}}/members/{{missingMemberId}}
   body: none
   auth: none
 }
 
 headers {
-  Cookie: access_token={{ownerToken}}
+  Cookie: access_token={{owner1Token}}
 }

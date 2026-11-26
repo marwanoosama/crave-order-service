@@ -1,0 +1,54 @@
+meta {
+  name: Customer channel (Socket.IO)
+  type: ws
+  seq: 1
+}
+
+ws {
+  url: {{wsUrl}}
+  body: ws
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{customer1Token}}
+}
+
+body:ws {
+  name: 1 - open namespace
+  content: '''
+    40
+  '''
+}
+
+body:ws {
+  name: 2 - subscribe customer room (allowed)
+  selected: true
+  content: '''
+    420["subscribe","customer:{{customer1UserId}}"]
+  '''
+}
+
+body:ws {
+  name: 3 - subscribe branch room (forbidden)
+  content: '''
+    421["subscribe","branch:{{branchId}}"]
+  '''
+}
+
+body:ws {
+  name: 4 - unsubscribe customer room
+  content: '''
+    422["unsubscribe","customer:{{customer1UserId}}"]
+  '''
+}
+
+docs {
+  # Socket.IO over raw WebSocket
+  
+  Connect first. After the server sends the Engine.IO `0` packet, send message 1 (`40`).
+  Wait for the Socket.IO `40...` and `42["hello", ...]` packets before sending messages 2-4.
+  
+  `customer:<userId>` is allowed. `branch:<branchId>` is intentionally forbidden for a customer;
+  its acknowledgement should be `{ ok: false, error: "not permitted" }`.
+}

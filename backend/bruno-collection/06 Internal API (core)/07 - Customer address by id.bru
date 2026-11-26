@@ -5,11 +5,11 @@ meta {
 }
 
 get {
-  url: {{coreBase}}/customer/addresses/internal/1
+  url: {{coreBase}}/customer/addresses/internal/{{customerAddressId}}
   body: none
   auth: none
 }
 
 headers {
-  api-key: dev-internal-api-key
+  api-key: {{internalApiKey}}
 }

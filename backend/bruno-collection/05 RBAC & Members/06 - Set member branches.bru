@@ -5,20 +5,20 @@ meta {
 }
 
 put {
-  url: {{coreBase}}/restaurants/1/members/3/branches
+  url: {{coreBase}}/restaurants/{{restaurantId}}/members/{{memberId}}/branches
   body: json
   auth: none
 }
 
 headers {
-  Cookie: access_token={{ownerToken}}
+  Cookie: access_token={{owner1Token}}
 }
 
 body:json {
   {
     "branchIds": [
-      1,
-      3
+      {{branchId}},
+      {{branch2Id}}
     ]
   }
 }

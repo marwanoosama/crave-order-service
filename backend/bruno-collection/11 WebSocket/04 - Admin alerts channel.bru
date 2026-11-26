@@ -1,0 +1,42 @@
+meta {
+  name: Admin alerts channel (Socket.IO)
+  type: ws
+  seq: 4
+}
+
+ws {
+  url: {{wsUrl}}
+  auth: none
+}
+
+headers {
+  Cookie: access_token={{adminToken}}
+}
+
+body:ws {
+  name: 1 - open namespace
+  content: '''
+    40
+  '''
+}
+
+body:ws {
+  name: 2 - subscribe admin alerts room
+  content: '''
+    420["subscribe","admin:alerts"]
+  '''
+}
+
+body:ws {
+  name: 3 - unsubscribe admin alerts room
+  content: '''
+    421["unsubscribe","admin:alerts"]
+  '''
+}
+
+docs {
+  # Assignment alerts
+
+  `system_admin` may subscribe to `admin:alerts`. The worker emits `assignment.exhausted`
+  there when an order reaches the maximum assignment attempts.
+}

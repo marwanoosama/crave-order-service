@@ -5,22 +5,22 @@ meta {
 }
 
 post {
-  url: {{coreBase}}/internal/branches/1/reserve-stock
+  url: {{coreBase}}/internal/branches/{{branchId}}/reserve-stock
   body: json
   auth: none
 }
 
 headers {
-  api-key: dev-internal-api-key
-  Idempotency-Key: brave-reserve-1
+  api-key: {{internalApiKey}}
+  Idempotency-Key: {{reserveIdempotencyKey}}
 }
 
 body:json {
   {
     "items": [
       {
-        "productId": 1,
-        "quantity": 1
+        "productId": {{reserveProductId}},
+        "quantity": {{reserveQuantity}}
       }
     ]
   }

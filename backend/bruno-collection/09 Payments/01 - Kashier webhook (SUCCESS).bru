@@ -5,59 +5,81 @@ meta {
 }
 
 post {
-  url: {{orderBase}}/payments/webhook/kashier?region=eg
+  url: {{orderBase}}/payments/webhook/kashier?region={{region}}
   body: json
   auth: none
 }
 
 headers {
-  x-kashier-signature: PASTE_HEX_HMAC_HERE
+  x-kashier-signature: {{kashierWebhookSignature}}
 }
 
 body:json {
   {
     "event": "pay",
     "data": {
-      "amount": "185.00",
-      "currency": "EGP",
+      "amount": "{{kashierAmount}}",
+      "currency": "{{kashierCurrency}}",
       "merchantOrderId": "{{onlineOrderId}}",
-      "kashierOrderId": "KO-12",
-      "method": "card",
-      "orderReference": "LOCAL-12",
-      "status": "SUCCESS",
-      "transactionId": "demo-tx-1",
-      "transactionResponseCode": "00",
+      "kashierOrderId": "{{kashierOrderId}}",
+      "method": "{{kashierMethod}}",
+      "orderReference": "{{kashierOrderReference}}",
+      "status": "{{kashierStatus}}",
+      "transactionId": "{{kashierTransactionId}}",
+      "transactionResponseCode": "{{kashierResponseCode}}",
       "signatureKeys": ["amount", "currency", "merchantOrderId", "kashierOrderId", "method", "orderReference", "status", "transactionId", "transactionResponseCode"]
     }
   }
 }
 
-script:post-response {
-  const body = res.getBody();
-  if (!body || body.success !== true) console.log("unexpected webhook response", body);
+script:pre-request {
+  // Signs the webhook exactly like Kashier does: HMAC-SHA256 over the sorted,
+  // URL-encoded signatureKeys values, keyed with KASHIER_API_KEY.
+  // crypto-js is a Bruno inbuilt library, so this works in Safe Mode too.
+  // The computed signature overrides the header AND the body is rebuilt from
+  // the same values, so header and payload can never drift apart.
+  const CryptoJS = require('crypto-js');
+  const data = {
+    amount: (Number(bru.getEnvVar('onlineOrderTotalMinor') || 0) / 100).toFixed(2),
+    currency: bru.getEnvVar('kashierCurrency'),
+    merchantOrderId: bru.getEnvVar('onlineOrderId'),
+    kashierOrderId: bru.getEnvVar('kashierOrderId'),
+    method: bru.getEnvVar('kashierMethod'),
+    orderReference: bru.getEnvVar('kashierOrderReference'),
+    status: bru.getEnvVar('kashierStatus'),
+    // fresh transaction id on every send — the server de-dupes on this field,
+    // so a reused id would be 200-but-skipped as a duplicate
+    transactionId: 'bruno-tx-' + Date.now(),
+    transactionResponseCode: bru.getEnvVar('kashierResponseCode'),
+    signatureKeys: ['amount', 'currency', 'merchantOrderId', 'kashierOrderId', 'method', 'orderReference', 'status', 'transactionId', 'transactionResponseCode'],
+  };
+  const keys = ['amount', 'currency', 'kashierOrderId', 'merchantOrderId', 'method', 'orderReference', 'status', 'transactionId', 'transactionResponseCode'];
+  const payload = keys.sort().map(function (k) { return k + '=' + encodeURIComponent(data[k]); }).join('&');
+  const sig = CryptoJS.HmacSHA256(payload, bru.getEnvVar('kashierApiKey')).toString(CryptoJS.enc.Hex);
+  req.setHeader('x-kashier-signature', sig);
+  req.setBody({event: 'pay', data: data});
 }
 
 docs {
-  # Kashier webhook (already automated — usually don't need to send this by hand)
+  # Kashier webhook (already automated — usually don't need to touch anything)
 
-  This endpoint is what Kashier's servers call after a checkout completes.
   Locally, Kashier can NOT reach localhost:4000 (KASHIER_WEBHOOK_URL is not
-  publicly reachable), so the order stays `pending_payment` after paying.
+  reachable from the internet), so *you* play Kashier: after placing an online
+  order, send this request to confirm the payment.
 
-  Easiest flow locally (does all of this automatically):
-    npx tsx play/pay-webhook.ts <orderPublicId>
-  That reads the order from the DB, signs the payload with the real HMAC
-  algorithm and POSTs it here. Status goes pending_payment -> placed and a
-  transaction row is created.
+  The pre-request script builds the body and the `x-kashier-signature` header
+  from the environment ({{onlineOrderId}}, {{onlineOrderTotalMinor}}, the
+  kashier* fields and {{kashierApiKey}}), so it always matches the order that
+  `02 - Create order (Kashier online)` last created — no manual signing needed.
 
-  If you really want to send this request by hand:
-  - merchantOrderId = the ORDER's publicId returned by POST /orders
-    (the "02 - Create order (Kashier online)" request already saves it into
-    {{onlineOrderId}}).
-  - Replace transactionId with something unique per payment — retries with the
-    SAME transactionId are de-duped as already-processed.
-  - Fill `x-kashier-signature` with HMAC-SHA256(key = KASHIER_API_KEY from
-    backend/.env) over the signatureKeys fields, sorted alphabetically,
-    concatenated as `key=encodeURIComponent(value)&...`
-    (copy the signing snippet from backend/play/pay-webhook.ts).
+  Expected: `200 {"success":true}` and the order moves `pending_payment → placed`
+  (fires `order.created` to the branch room and `order.status_changed` to the
+  customer room over WebSocket).
+
+  Each send generates a fresh `transactionId`, so it always processes — the
+  server de-dupes retries by transaction id.
+
+  (the "02 - Create order (Kashier online)" request already saves the order id,
+  total and redirectUrl into the environment; open `{{kashierRedirectUrl}}` in a
+  browser to see the real Kashier test checkout page)
 }

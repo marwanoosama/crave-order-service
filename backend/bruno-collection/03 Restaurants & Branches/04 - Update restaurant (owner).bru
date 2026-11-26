@@ -5,17 +5,17 @@ meta {
 }
 
 patch {
-  url: {{coreBase}}/restaurants/1
+  url: {{coreBase}}/restaurants/{{restaurantId}}
   body: json
   auth: none
 }
 
 headers {
-  Cookie: access_token={{ownerToken}}
+  Cookie: access_token={{owner1Token}}
 }
 
 body:json {
   {
-    "name": "Burger Nation (edited)"
+    "name": "{{updatedRestaurantName}}"
   }
 }
